@@ -74,7 +74,7 @@ async def add_user(callback_query: types.CallbackQuery, state: FSMContext, sessi
 @user_private_router.message(AddUser.name, F.text)
 async def add_name(message: types.Message, state: FSMContext, session: AsyncSession):
     user = await orm_get_user(session=session, user_id=message.from_user.id)
-    if message.text == '.':
+    if message.text == '.' and user:
         await state.update_data(name=user.name)
     else:
         await state.update_data(name=message.text)
@@ -87,7 +87,7 @@ async def add_name(message: types.Message, state: FSMContext, session: AsyncSess
 @user_private_router.message(AddUser.apartment, F.text)
 async def add_apartment(message: types.Message, state: FSMContext, session: AsyncSession):
     user = await orm_get_user(session=session, user_id=message.from_user.id)
-    if message.text == '.':
+    if message.text == '.' and user:
         await state.update_data(apartment=user.apartment)
     else:
         if not message.text.isdigit() or not (0 < int(message.text) <= APARTMENTCOUNT):
@@ -103,7 +103,7 @@ async def add_apartment(message: types.Message, state: FSMContext, session: Asyn
 @user_private_router.message(AddUser.phone, F.text)
 async def add_phone(message: types.Message, state: FSMContext, session: AsyncSession):
     user = await orm_get_user(session=session, user_id=message.from_user.id)
-    if message.text == '.':
+    if message.text == '.' and user:
         await state.update_data(phone=user.phone)
     else:
         phone = message.text

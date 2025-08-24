@@ -51,11 +51,11 @@ async def orm_get_user(session: AsyncSession, user_id:int) -> User:
     user = result.scalars().first()
     return user
 
-async def orm_get_phone(session: AsyncSession, phone:str) -> str:
+async def orm_get_phone(session: AsyncSession, phone:str) -> str | None:
     query = select(User).where(User.phone == phone)
     result = await session.execute(query)
     user =result.scalars().first()
-    return user.phone is not None
+    return user.phone if user else None
 
 async def orm_get_apartment(session: AsyncSession, apartment:str) -> int:
     query = select(User).where(User.apartment == apartment)
