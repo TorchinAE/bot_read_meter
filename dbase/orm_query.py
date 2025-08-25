@@ -1,11 +1,12 @@
-from email.policy import default
-from typing import Optional
+from datetime import datetime
+from typing import Optional, Union, Sequence
 
-from sqlalchemy import select, Boolean
+from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.test_users import test_users
-from dbase.models import User
+from dbase.models import User, Meter
+
 
 async def orm_add_user(
     session: AsyncSession,
@@ -51,7 +52,7 @@ async def orm_get_user(session: AsyncSession, user_id:int) -> User:
     user = result.scalars().first()
     return user
 
-async def orm_get_phone(session: AsyncSession, phone:str) -> str | None:
+async def orm_get_phone(session: AsyncSession, phone:str) ->  Union[str, None]:
     query = select(User).where(User.phone == phone)
     result = await session.execute(query)
     user =result.scalars().first()
@@ -70,3 +71,69 @@ async def orm_get_confirmed(session: AsyncSession, user_id: int) -> bool:
     return user.confirmed
 
 
+async def orm_add_update_meter(
+    session: AsyncSession,
+    user_id: int,
+    water_hot_bath: Optional[int] = None,
+    water_cold_bath: Optional[int] = None,
+    water_hot_kitchen: Optional[int] = None,
+    water_cold_kitchen: Optional[int] = None,
+):
+    now = datetime.now()
+    query = select(Meter).where(
+        Meter.user_id == user_id,
+        func.extract('year', Meter.created) == now.year,
+        func.extract('month', Meter.created) == now.month
+    ).order_by(desc(Meter.created))
+    result = await session.execute(query)
+    meter = result.scalars().first()
+    if meter is None:
+        session.add(
+            Meter(user_id=user_id,
+                  water_hot_bath=water_hot_bath,
+                  water_cold_bath=water_cold_bath,
+                  water_hot_kitchen=water_hot_kitchen,
+                  water_cold_kitchen=water_cold_kitchen,
+                  )
+        )
+    else:
+        meter.user_id = user_id or meter.user_id
+        meter.water_hot_bath = water_hot_bath or meter.water_hot_bath
+        meter.water_cold_bath = water_cold_bath or meter.water_cold_bath
+        meter.water_hot_kitchen = water_hot_kitchen or meter.water_hot_kitchen
+        meter.water_cold_kitchen = water_cold_kitchen or meter.water_cold_kitchen
+    await session.commit()
+
+
+async def orm_get_user_meters(session: AsyncSession, user_id: int) ->  Sequence[Meter]:
+    query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
+    result = await session.execute(query)
+    return result.scalars().all()
+
+async def orm_get_user_meters_last(session: AsyncSession, user_id: int) -> Optional[Meter]:
+    query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
+    result = await session.execute(query)
+    meter = result.scalars().first()
+    return meter
+
+async def orm_get_meter_from_user_month_year(
+        session: AsyncSession,
+        user_id: int,
+        month:  Union[int, None] = None,
+        year: Union[int, None] = None,
+)->  Union[Meter, None]:
+
+    if month is None:
+        month = datetime.now().month
+    if year is None:
+        year = datetime.now().year
+
+    query = (select(Meter).where(
+            Meter.user_id == user_id,
+                func.extract('year', Meter.created) == year,
+                func.extract('month', Meter.created) == month)
+             .order_by(desc(Meter.created))
+             .limit(1)
+    )
+    result = await session.execute(query)
+    return result.scalars().first()

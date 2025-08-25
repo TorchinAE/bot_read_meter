@@ -27,3 +27,11 @@ class Meter(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey('user.id',ondelete='CASCADE'), nullable=False)
 
     user: Mapped['User'] = relationship(backref='meters')
+
+    def __repr__(self):
+        return (f"<Meter(id={self.id}, "
+                f"created={self.created.strftime('%d.%m.%Y') if self.created else 'N/A'}, "
+                f"water_hot_kitchen={self.water_hot_kitchen}, "
+                f"water_cold_kitchen={self.water_cold_kitchen}, "
+                f"water_hot_bath={self.water_hot_bath}, "
+                f"water_cold_bath={self.water_cold_bath})>")

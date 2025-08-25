@@ -1,0 +1,1 @@
+APARTMENTCOUNT: int = 386
