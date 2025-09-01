@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from aiogram import F, types, Router
 from aiogram.filters import CommandStart, Command, StateFilter
 from aiogram.fsm.context import FSMContext
@@ -31,8 +33,15 @@ async def start_cmd(message: types.Message,
 @user_private_confirmed_router.message(Command('menu'))
 async def menu_cmd(message: types.Message, state: FSMContext):
     await state.clear()
-    await message.answer('Выберите счётчик.',
+    await message.answer('Чтобы передать показания выберите счётчик.',
                          reply_markup=get_user_main_btns(btns))
+
+
+@user_private_confirmed_router.message(Command('about'))
+async def menu_cmd(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer('Коротко о нас... Рождественский дом 6'
+                            '\nВыберите команду из Menu')
 
 
 @user_private_confirmed_router.callback_query(F.data == "all")
@@ -42,13 +51,21 @@ async def all_cmd(callback_query: types.CallbackQuery,
     await state.clear()
     meter = await orm_get_user_meters_last(session, callback_query.from_user.id)
     data = meter.updated.strftime("%d-%m-%y")
+    if data is None:
+        data = datetime.now()
 
-    await callback_query.message.answer(
+    msg = (
         f'Показания на {data}'
-        f'\n\nГорячая вода кухня - {meter.water_hot_kitchen}'
-        f'\nГорячая вода СУ - {meter.water_hot_bath}'
-        f'\nХолодная вода кухня - {meter.water_cold_kitchen}'
-        f'\nХолодная вода СУ - {meter.water_cold_bath}')
+        '\n\nГорячая вода кухня - '
+        f'{meter.water_hot_kitchen if meter.water_hot_kitchen else "Не найдено"}'
+        '\nГорячая вода СУ - '
+        f'{meter.water_hot_bath if meter.water_hot_bath else "Не найдено"}'
+        '\nХолодная вода кухня - '
+        f'{meter.water_cold_kitchen if meter.water_cold_kitchen else "Не найдено"}'
+        '\nХолодная вода СУ - '
+        f'{meter.water_cold_bath if meter.water_cold_bath else "Не найдено"}'
+        )
+    await callback_query.message.answer(msg)
     await callback_query.answer()
 
 
@@ -69,21 +86,27 @@ async def set_meter_cmd(callback_query: types.CallbackQuery,
 
     meter = await orm_get_user_meters_last(session, callback_query.from_user.id)
     current_value = None
-
+    name_meter = ''
     if action == "water_hot_kitchen":
         current_value = meter.water_hot_kitchen if meter else None
+        name_meter = 'Горячая вода кухня'
     elif action == "water_cold_kitchen":
         current_value = meter.water_cold_kitchen if meter else None
+        name_meter = 'Холодная вода кухня'
     elif action == "water_hot_bath":
         current_value = meter.water_hot_bath if meter else None
+        name_meter = 'Горячая вода СУ'
     elif action == "water_cold_bath":
         current_value = meter.water_cold_bath if meter else None
+        name_meter = 'Холодная вода СУ'
 
-    msg = (f'Текущие показания {current_value}.'
-           '\nВведите показания счётчика.')
+    msg = (
+        f'{name_meter}\nТекущие показания - '
+        f'{current_value if current_value else " не найдены."}'
+        '\nВведите показания счётчика.'
+    )
     await callback_query.message.answer(msg)
     await state.set_state(state_mapping[action])
-    current_state = await state.get_state()
     await callback_query.answer()
 
 
@@ -113,7 +136,7 @@ async def save_meter_cmd(message: types.Message,
     elif current_state == AddMeter.water_cold_bath:
         meter_value = meter.water_cold_bath if meter else None
         water_cold_bath_data = message.text
-    validate = await validate_data_meter(message, message.text, meter_value)
+    validate = await validate_data_meter(message, state, message.text, meter_value)
     print('validate==',validate, 'meter_value==', meter_value)
     if not validate or current_state is None:
         return

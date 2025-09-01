@@ -9,6 +9,7 @@ load_dotenv()
 from middlewares.db import DataBaseSession
 
 from dbase.orm_db import create_db, session_maker
+from handlers.admin_private import user_private_admin_router
 from handlers.user_private_comfirmed import user_private_confirmed_router
 from handlers.user_private import user_private_router
 from handlers.user_group import user_group_router
@@ -20,6 +21,7 @@ bot = Bot(token=os.getenv('TELEGRAM_TOKEN'))
 bot.my_admins_list = []
 dp = Dispatcher()
 
+dp.include_router(user_private_admin_router)
 dp.include_router(user_private_confirmed_router)
 dp.include_router(user_private_router)
 dp.include_router(user_group_router)

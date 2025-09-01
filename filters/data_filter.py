@@ -1,9 +1,15 @@
 from aiogram import types
+from aiogram.fsm.context import FSMContext
 
 
 async def validate_data_meter(message: types.Message,
+                              state: FSMContext,
                               data_meter:str,
-                              now_meter:int = 0) -> bool:
+                              now_meter:int = 0
+                              ) -> bool:
+    current_state = await state.get_state()
+    if current_state is None:
+        return False
     if not data_meter.isdigit():
         await message.answer('Не верный ввод.\nОжидается положительное число.')
         return False

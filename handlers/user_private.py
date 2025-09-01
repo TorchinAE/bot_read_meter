@@ -129,7 +129,6 @@ async def add_phone(message: types.Message,
             return
         await state.update_data(phone=message.text)
     data = await state.get_data()
-    await message.answer(str(data))
     await orm_add_user(session=session, tele_id=message.from_user.id, **data)
     await message.answer('Спасибо, данные добавлены. Обратитесь '
                          'к Администратору для подтверждения данных',
@@ -142,7 +141,7 @@ async def cancel_cmd(callback_query: types.CallbackQuery, state: FSMContext):
     await callback_query.answer('Вы отменили операцию.')
     await state.clear()
     await callback_query.message.answer(
-        'Был рад пообщаться user_private_router.'
+        'Был рад пообщаться.'
     )
 
 
