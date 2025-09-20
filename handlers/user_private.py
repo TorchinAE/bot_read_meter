@@ -3,7 +3,7 @@ from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dbase.orm_query import orm_get_user, orm_add_user, orm_get_phone
+from dbase.orm_query import orm_add_user, orm_get_phone, orm_get_user_tele
 from filters.chat_types import ChatTypeFilter
 from handlers.const import APARTMENTCOUNT
 from handlers.states import AddUser
@@ -11,6 +11,7 @@ from kbds.kbds import get_user_main_btns
 
 user_private_router = Router()
 user_private_router.message.filter(ChatTypeFilter(['private']))
+
 
 @user_private_router.message(Command('menu'))
 async def nemu_cmd(message: types.Message, session: AsyncSession):
@@ -24,6 +25,7 @@ async def about_cmd(message: types.Message):
                  '\nДля начала работы отправьте команду /menu')
     await message.answer(text_mgs)
 
+
 @user_private_router.message(CommandStart())
 @user_private_router.callback_query(F.data == "start")
 async def start_cmd(message: types.Message, session: AsyncSession):
@@ -32,7 +34,7 @@ async def start_cmd(message: types.Message, session: AsyncSession):
                  'К сожалению, Вы не авторизированы как житель дома №6.\n'
                  )
 
-    user = await orm_get_user(session, message.from_user.id)
+    user = await orm_get_user_tele(session, message.from_user.id)
     if user is None:
         text_mgs += ('Не смог найти Вас в базе.\n'
                     'Давайте заполним данные, чтобы обратиться к Администратору'
@@ -67,8 +69,8 @@ async def add_user(callback_query: types.CallbackQuery,
                                         '\nДля сохранения текущего занчения '
                                         'введите "." (точку)',
                                         reply_markup=types.ReplyKeyboardRemove())
-    user = await orm_get_user(session=session,
-                              user_id=callback_query.from_user.id)
+    user = await orm_get_user_tele(session=session,
+                                   tele_id=callback_query.from_user.id)
     await callback_query.message.answer(f'Текущее имя {user.name}. Введите имя')
     await state.set_state(AddUser.name)
     await callback_query.answer()
@@ -78,7 +80,8 @@ async def add_user(callback_query: types.CallbackQuery,
 async def add_name(message: types.Message,
                    state: FSMContext,
                    session: AsyncSession):
-    user = await orm_get_user(session=session, user_id=message.from_user.id)
+    user = await orm_get_user_tele(session=session,
+                                   tele_id=message.from_user.id)
     if message.text == '.' and user:
         await state.update_data(name=user.name)
     else:
@@ -93,7 +96,8 @@ async def add_name(message: types.Message,
 @user_private_router.message(AddUser.apartment, F.text)
 async def add_apartment(message: types.Message, state: FSMContext,
                         session: AsyncSession):
-    user = await orm_get_user(session=session, user_id=message.from_user.id)
+    user = await orm_get_user_tele(session=session,
+                                   tele_id=message.from_user.id)
     if message.text == '.' and user:
         await state.update_data(apartment=user.apartment)
     else:
@@ -114,7 +118,8 @@ async def add_apartment(message: types.Message, state: FSMContext,
 async def add_phone(message: types.Message,
                     state: FSMContext,
                     session: AsyncSession):
-    user = await orm_get_user(session=session, user_id=message.from_user.id)
+    user = await orm_get_user_tele(session=session,
+                                   tele_id=message.from_user.id)
     if message.text == '.' and user:
         await state.update_data(phone=user.phone)
     else:

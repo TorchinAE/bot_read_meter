@@ -18,11 +18,7 @@ class IsAdmin(Filter):
         pass
 
     async def __call__(self, message: types.Message, bot: Bot) -> bool:
-        if message.from_user.id in bot.my_admins_list:
-            print('IsAdmin')
-        else:
-            print('NO Admin')
-        return message.from_user.id in bot.my_admins_list
+        return message.from_user.id in bot.my_admin_list
 
 
 class IsConfirmedUser(Filter):

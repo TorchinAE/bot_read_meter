@@ -18,7 +18,7 @@ from common.bot_cmds_list import private
 
 
 bot = Bot(token=os.getenv('TELEGRAM_TOKEN'))
-bot.my_admins_list = []
+bot.my_admin_list = []
 dp = Dispatcher()
 
 dp.include_router(user_private_admin_router)

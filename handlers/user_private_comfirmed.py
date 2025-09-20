@@ -6,8 +6,9 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import ReplyKeyboardRemove
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from dbase.orm_query import (orm_get_user, orm_get_meter_from_user_month_year,
-                             orm_add_update_meter, orm_get_user_meters_last)
+from dbase.orm_query import (orm_get_meter_from_user_month_year,
+                             orm_add_update_meter, orm_get_user_meters_last,
+                             orm_get_user_tele)
 from filters.chat_types import ChatTypeFilter, IsConfirmedUser
 from filters.data_filter import validate_data_meter
 from handlers.states import AddMeter
@@ -25,7 +26,7 @@ async def start_cmd(message: types.Message,
                     session: AsyncSession,
                     state: FSMContext):
     await state.clear()
-    user = await orm_get_user(session, message.from_user.id)
+    user = await orm_get_user_tele(session, message.from_user.id)
     text_mgs = f'Приветствую Вас, {user.name}! Выберите счётчик.'
     await message.answer(text_mgs, reply_markup=get_user_main_btns(btns))
 
@@ -38,7 +39,7 @@ async def menu_cmd(message: types.Message, state: FSMContext):
 
 
 @user_private_confirmed_router.message(Command('about'))
-async def menu_cmd(message: types.Message, state: FSMContext):
+async def about_cmd(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer('Коротко о нас... Рождественский дом 6'
                             '\nВыберите команду из Menu')
@@ -50,21 +51,23 @@ async def all_cmd(callback_query: types.CallbackQuery,
                   state: FSMContext):
     await state.clear()
     meter = await orm_get_user_meters_last(session, callback_query.from_user.id)
-    data = meter.updated.strftime("%d-%m-%y")
-    if data is None:
-        data = datetime.now()
-
-    msg = (
-        f'Показания на {data}'
-        '\n\nГорячая вода кухня - '
-        f'{meter.water_hot_kitchen if meter.water_hot_kitchen else "Не найдено"}'
-        '\nГорячая вода СУ - '
-        f'{meter.water_hot_bath if meter.water_hot_bath else "Не найдено"}'
-        '\nХолодная вода кухня - '
-        f'{meter.water_cold_kitchen if meter.water_cold_kitchen else "Не найдено"}'
-        '\nХолодная вода СУ - '
-        f'{meter.water_cold_bath if meter.water_cold_bath else "Не найдено"}'
+    if meter:
+        data = meter.updated.strftime("%d-%m-%y")
+        msg = (
+            f'Показания на {data}'
+            '\n\nГорячая вода кухня - '
+            f'{meter.water_hot_kitchen if meter.water_hot_kitchen else "Не найдено"}'
+            '\nГорячая вода СУ - '
+            f'{meter.water_hot_bath if meter.water_hot_bath else "Не найдено"}'
+            '\nХолодная вода кухня - '
+            f'{meter.water_cold_kitchen if meter.water_cold_kitchen else "Не найдено"}'
+            '\nХолодная вода СУ - '
+            f'{meter.water_cold_bath if meter.water_cold_bath else "Не найдено"}'
         )
+    else:
+        data = datetime.now().strftime("%d-%m-%y")
+        msg = (f'Показания на {data} не найдены.')
+
     await callback_query.message.answer(msg)
     await callback_query.answer()
 

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Union, Sequence
 
-from sqlalchemy import select, desc, func
+from sqlalchemy import select, desc, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from common.test_users import test_users
@@ -46,11 +46,34 @@ async def orm_create_test_users(session: AsyncSession):
 
     await session.commit()
 
-async def orm_get_user(session: AsyncSession, user_id:int) -> User:
-    query = select(User).where(User.tele_id == user_id)
+
+async def orm_get_user_tele(session: AsyncSession, tele_id:int) -> User:
+    query = select(User).where(User.tele_id == tele_id)
     result = await session.execute(query)
     user = result.scalars().first()
     return user
+
+
+async def orm_get_users_confirm(session: AsyncSession) -> Sequence[User]:
+    query = select(User).where(User.confirmed == True)
+    result = await session.execute(query)
+    users = result.scalars().all()
+    return users
+
+
+async def orm_get_users_to_apart(session: AsyncSession, start_apart: int, fnsh_apart: int) -> list[User]:
+    query = select(User).where(User.apartment >= start_apart, User.apartment<= fnsh_apart, User.confirmed == True)
+    result = await session.execute(query)
+    users = result.scalars().all()
+    return list(users)
+
+
+async def orm_del_user(session: AsyncSession, user_tele_id:int) -> bool:
+    query = delete(User).where(User.tele_id == user_tele_id)
+    result = await session.execute(query)
+    await session.commit()
+    return result.rowcount > 0
+
 
 async def orm_get_phone(session: AsyncSession, phone:str) ->  Union[str, None]:
     query = select(User).where(User.phone == phone)
@@ -58,17 +81,26 @@ async def orm_get_phone(session: AsyncSession, phone:str) ->  Union[str, None]:
     user =result.scalars().first()
     return user.phone if user else None
 
-async def orm_get_apartment(session: AsyncSession, apartment:str) -> int:
+
+async def orm_get_user_apartment(session: AsyncSession, apartment:str) -> User:
     query = select(User).where(User.apartment == apartment)
     result = await session.execute(query)
     user =result.scalars().first()
-    return user.apartment is not None
+    return user
+
 
 async def orm_get_confirmed(session: AsyncSession, user_id: int) -> bool:
-    user = await orm_get_user(session, user_id)
+    user = await orm_get_user_tele(session, user_id)
     if user is None:
         return False
     return user.confirmed
+
+
+async def orm_get_unconfirmed_user_last(session: AsyncSession) -> User:
+    query = select(User).where(User.confirmed.is_(False))
+    result = await session.execute(query)
+    user = result.scalars().first()
+    return user
 
 
 async def orm_add_update_meter(
@@ -110,11 +142,13 @@ async def orm_get_user_meters(session: AsyncSession, user_id: int) ->  Sequence[
     result = await session.execute(query)
     return result.scalars().all()
 
+
 async def orm_get_user_meters_last(session: AsyncSession, user_id: int) -> Optional[Meter]:
     query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
     result = await session.execute(query)
     meter = result.scalars().first()
     return meter
+
 
 async def orm_get_meter_from_user_month_year(
         session: AsyncSession,
