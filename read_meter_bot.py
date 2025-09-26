@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 import os
 from aiogram import Bot, Dispatcher, types
 
+from dbase.orm_query import create_restrict_words_db
+
 load_dotenv()
 
 from middlewares.db import DataBaseSession
@@ -14,7 +16,6 @@ from handlers.user_private_comfirmed import user_private_confirmed_router
 from handlers.user_private import user_private_router
 from handlers.user_group import user_group_router
 from common.bot_cmds_list import private
-
 
 
 bot = Bot(token=os.getenv('TELEGRAM_TOKEN'))
@@ -34,7 +35,6 @@ async def main():
         commands=private,
         scope=types.BotCommandScopeAllPrivateChats()
     )
-
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":

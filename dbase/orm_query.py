@@ -1,11 +1,37 @@
 from datetime import datetime
 from typing import Optional, Union, Sequence
 
-from sqlalchemy import select, desc, func, delete
+from sqlalchemy import select, desc, func, delete, extract
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from common.test_users import test_users
-from dbase.models import User, Meter
+from dbase.models import User, Meter, Words
+
+
+async def create_restrict_words_db(session: AsyncSession,):
+    query = select(Words)
+    result = await session.execute(query)
+    words = result.scalars().first()
+    if words:
+        return
+    restrict_words =[]
+    with open('ban_words.txt', 'r', encoding='utf-8') as f:
+        for line in f:
+            word = line.strip()
+            if word:
+                restrict_words.append(word)
+    words_to_add = [Words(word=word) for word in
+                    restrict_words]  # предполагается, что поле называется `word`
+    session.add_all(words_to_add)
+    await session.commit()
+
+
+async def orm_get_words(session: AsyncSession,):
+    query = select(Words)
+    result = await session.execute(query)
+    words = result.scalars().all()
+    return words
 
 
 async def orm_add_user(
@@ -21,7 +47,11 @@ async def orm_add_user(
     user = result.scalars().first()
     if user is None:
         session.add(
-            User(tele_id=tele_id, name=name, apartment=apartment, phone=phone, confirmed=confirmed)
+            User(tele_id=tele_id,
+                 name=name,
+                 apartment=apartment,
+                 phone=phone,
+                 confirmed=confirmed)
         )
     else:
         user.name = name or user.name
@@ -61,8 +91,12 @@ async def orm_get_users_confirm(session: AsyncSession) -> Sequence[User]:
     return users
 
 
-async def orm_get_users_to_apart(session: AsyncSession, start_apart: int, fnsh_apart: int) -> list[User]:
-    query = select(User).where(User.apartment >= start_apart, User.apartment<= fnsh_apart, User.confirmed == True)
+async def orm_get_users_to_apart(session: AsyncSession,
+                                 start_apart: int,
+                                 fnsh_apart: int) -> list[User]:
+    query = select(User).where(User.apartment >= start_apart,
+                               User.apartment<= fnsh_apart,
+                               User.confirmed == True)
     result = await session.execute(query)
     users = result.scalars().all()
     return list(users)
@@ -137,8 +171,29 @@ async def orm_add_update_meter(
     await session.commit()
 
 
-async def orm_get_user_meters(session: AsyncSession, user_id: int) ->  Sequence[Meter]:
-    query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
+# async def orm_get_user_meters(session: AsyncSession,
+#                               user_id: int) ->  Sequence[Meter]:
+#     query = (
+#         select(Meter).
+#         where(Meter.user_id == user_id).
+#         order_by(desc(Meter.created))
+#     )
+#     result = await session.execute(query)
+#     return result.scalars().all()
+
+
+async def orm_get_all_meters_to_month(session: AsyncSession) ->  Sequence[Meter]:
+    now = datetime.now()
+    query = (
+        select(Meter)
+        .join(User)
+        .options(joinedload(Meter.user))
+        .where(
+            extract('year', Meter.created) == now.year,
+            extract('month', Meter.created) == now.month
+        )
+        .order_by(User.apartment, desc(Meter.created))
+    )
     result = await session.execute(query)
     return result.scalars().all()
 

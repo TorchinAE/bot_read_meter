@@ -1,10 +1,14 @@
-from sqlalchemy import DateTime, ForeignKey, String, func, Integer, Boolean, BigInteger
+from sqlalchemy import (DateTime, ForeignKey, String, func, Integer, Boolean,
+                        BigInteger)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
     created: Mapped[DateTime] = mapped_column(DateTime, default=func.now())
-    updated: Mapped[DateTime] = mapped_column(DateTime, default=func.now(), onupdate=func.now())
+    updated: Mapped[DateTime] = mapped_column(DateTime,
+                                              default=func.now(),
+                                              onupdate=func.now())
+
 
 class User(Base):
     __tablename__ = 'user'
@@ -15,18 +19,24 @@ class User(Base):
     apartment: Mapped[int] = mapped_column(Integer, nullable=True)
     phone: Mapped[str] = mapped_column(String(13), nullable=True, unique=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    meters: Mapped[list["Meter"]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan"
+    )
+
 
 class Meter(Base):
     __tablename__ = 'meter'
 
-    id :Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id : Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     water_hot_bath : Mapped[int] = mapped_column(Integer, nullable=True)
     water_cold_bath: Mapped[int] = mapped_column(Integer, nullable=True)
     water_hot_kitchen: Mapped[int] = mapped_column(Integer, nullable=True)
     water_cold_kitchen: Mapped[int] = mapped_column(Integer, nullable=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey('user.id',ondelete='CASCADE'), nullable=False)
-
-    user: Mapped['User'] = relationship(backref='meters')
+    user_id : Mapped[int] = mapped_column(
+        ForeignKey('user.tele_id', ondelete='CASCADE'),
+                           nullable=False)
+    user: Mapped["User"] = relationship(back_populates="meters")
 
     def __repr__(self):
         return (f"<Meter(id={self.id}, "
@@ -35,3 +45,9 @@ class Meter(Base):
                 f"water_cold_kitchen={self.water_cold_kitchen}, "
                 f"water_hot_bath={self.water_hot_bath}, "
                 f"water_cold_bath={self.water_cold_bath})>")
+
+
+class Words(Base):
+    __tablename__ = 'words'
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    word: Mapped[str] = mapped_column(String, nullable=False)

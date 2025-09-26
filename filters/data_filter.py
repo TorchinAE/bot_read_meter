@@ -24,7 +24,7 @@ async def validate_data_meter(message: types.Message,
         return False
     return True
 
-async def validate_porch(message:types.Message) ->bool:
+async def validate_porch(message: types.Message) ->bool:
     num_porch = message.text
     if not num_porch.isdigit() or int(num_porch) > 5:
         await message.answer('Не верный ввод.\nОжидается число 1 - 5')

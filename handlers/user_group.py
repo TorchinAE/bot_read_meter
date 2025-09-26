@@ -22,7 +22,7 @@ async def get_admin(message: types.Message, bot: Bot):
     admin_list = [
         member.user.id
         for member in admin_list
-        if member.status =='creator' or member.status == 'administrator'
+        if member.status == 'creator' or member.status == 'administrator'
     ]
     bot.my_admin_list = admin_list
     if message.from_user.id in admin_list:

@@ -1,24 +1,34 @@
+import datetime
+from io import BytesIO
+
+from aiogram.types import BufferedInputFile
+from attr.validators import max_len
+from openpyxl import Workbook
+
 from aiogram import Router, types, F, Bot
 from aiogram.exceptions import TelegramForbiddenError, TelegramBadRequest
 from aiogram.filters import CommandStart, StateFilter, Command
 from aiogram.fsm.context import FSMContext
+from openpyxl.styles import Alignment
+from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dbase.orm_query import orm_get_unconfirmed_user_last, \
     orm_del_user, orm_get_user_tele, orm_get_users_to_apart, \
     orm_get_users_confirm, orm_get_user_apartment, orm_get_user_meters_last, \
-    orm_add_update_meter
+    orm_add_update_meter, orm_get_all_meters_to_month, orm_get_words
 from filters.chat_types import ChatTypeFilter, IsAdmin
 from filters.data_filter import validate_porch, validate_apart, \
     validate_data_meter
 from handlers.const import PORCH_APART
 from handlers.states import PorchMessage, SetApart, ChangeMeter
 from kbds.kbds import btns_admin, get_user_main_btns, btns_yes_no, btns, \
-    btns_cnl
+    btns_cnl, btns_edit_del_new
 
 user_private_admin_router = Router()
-user_private_admin_router.message.filter(ChatTypeFilter(['private']),IsAdmin())
+user_private_admin_router.message.filter(ChatTypeFilter(['private']), IsAdmin())
 user_private_admin_router.callback_query.filter(IsAdmin())
+
 
 @user_private_admin_router.message(Command('menu'))
 async def nemu_cmd(message: types.Message, state: FSMContext):
@@ -45,9 +55,73 @@ async def start_cmd(message: types.Message,
 
 @user_private_admin_router.callback_query(F.data == "cancel")
 async def cancel_cmd(callback: types.CallbackQuery,
-                     state: FSMContext):
+                     state: FSMContext,
+                     ):
     await callback.answer()
+    await callback.bot.delete_message(
+        chat_id=callback.message.chat.id,
+        message_id=callback.message.message_id
+    )
     await start_cmd(callback.message, state)
+
+
+@user_private_admin_router.callback_query(F.data == "restrict_words")
+async def restrict_words_cmd(callback: types.CallbackQuery):
+    await callback.message.edit_text('Ругательства\nЧто будем делать?',
+        reply_markup=get_user_main_btns(btns_edit_del_new)
+    )
+
+async def generate_excel_in_memory_words(session: AsyncSession,):
+    """Создаёт Excel-файл в памяти"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([
+        "id",
+        "Слова",
+    ])
+    words = await orm_get_words(session)
+    max_ln = 1
+
+    for word in words:
+        sheet.append([
+            word.id,
+            word.word
+        ])
+        max_ln = max(max_ln, len(word.word))
+
+    column_letter = get_column_letter(1)
+    sheet.column_dimensions[column_letter].width = 10
+    sheet[column_letter][0].alignment = Alignment(
+        horizontal='center',
+        vertical='center')
+
+    column_letter = get_column_letter(2)
+    sheet.column_dimensions[column_letter].width = max_ln
+    sheet[column_letter][0].alignment = Alignment(
+        horizontal='center',
+        vertical='center')
+
+    virtual_workbook = BytesIO()
+    workbook.save(virtual_workbook)
+    virtual_workbook.seek(0)
+    return virtual_workbook
+
+
+@user_private_admin_router.callback_query(F.data == "get_words")
+async def get_word_cmd(callback: types.CallbackQuery,
+                        session: AsyncSession):
+    await callback.answer()
+    virtual_workbook = await generate_excel_in_memory_words(session)
+    filename = f"Запрещенные слова {datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    document = BufferedInputFile(
+        file=virtual_workbook.getvalue(),
+        filename=filename
+    )
+    await callback.bot.send_document(
+        chat_id=callback.message.chat.id,
+        document=document,
+        caption="Список запрещённых слов готов!"
+    )
 
 
 @user_private_admin_router.callback_query(F.data == "confirm_user")
@@ -55,7 +129,9 @@ async def confirm_user_cmd(callback: types.CallbackQuery,
                            session: AsyncSession):
     user = await orm_get_unconfirmed_user_last(session)
     if not user:
-        await callback.answer("Нет неподтверждённых пользователей.", show_alert=True)
+        await callback.answer(
+            "Нет неподтверждённых пользователей.",
+            show_alert=True)
         return
     user_info = (
         f"👤 <b>Имя:</b> {user.name}\n"
@@ -77,9 +153,9 @@ async def confirm_user_cmd(callback: types.CallbackQuery,
 
 @user_private_admin_router.callback_query(F.data.startswith("conf_user"))
 async def conf_user_cmd(callback: types.CallbackQuery,
-                      session: AsyncSession,
-                      bot: Bot,
-                      state: FSMContext):
+                        session: AsyncSession,
+                        bot: Bot,
+                        state: FSMContext):
     tele_id = int(callback.data.split('_')[-1])
     user = await orm_get_user_tele(session, tele_id)
     user.confirmed = True
@@ -137,7 +213,7 @@ async def input_apart(message: types.Message,
         user = await orm_get_user_apartment(session, message.text)
         if user is None:
             await message.answer('Квартира не найдена')
-            await start_cmd(message,state)
+            await start_cmd(message, state)
             return
 
         await state.update_data(apartment=message.text)
@@ -253,6 +329,7 @@ async def show_meter_info(
     meter = await orm_get_user_meters_last(session, user.tele_id)
 
     user_info = f'Текущие показания кв {user.apartment}:\n'
+    user_info += f'Имя: {user.name}\nТелефон: {user.phone}\nПодтверждён: {"Да" if user.confirmed else "Нет"}\n'
     if meter:
         user_info += (
             f"🚰 <b>Счётчики горячей воды:</b> кухня - {meter.water_hot_kitchen if meter.water_hot_kitchen else 'Не найдено'}    СУ - {meter.water_hot_bath if meter.water_hot_bath else 'Не найдено'}\n"
@@ -272,6 +349,66 @@ async def send_info_apart(message: types.Message,
         return
 
     await show_meter_info(message, session, state, message.text)
+
+
+
+async def generate_excel_in_memory(session: AsyncSession,):
+    """Создаёт Excel-файл в памяти"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append([
+        "Квартира",
+        "Горячая вода (ванна)",
+        "Холодная вода (ванна)",
+        "Горячая вода (кухня)",
+        "Холодная вода (кухня)",
+        "Дата списания"
+    ])
+    meters = await orm_get_all_meters_to_month(session)
+    print(f"Найдено записей: {len(meters)}")
+
+    for i, meter in enumerate(meters):
+        sheet.append([
+            meter.user.apartment,
+            meter.water_hot_bath or 0,
+            meter.water_cold_bath or 0,
+            meter.water_hot_kitchen or 0,
+            meter.water_cold_kitchen or 0,
+            meter.created.strftime("%Y-%m-%d %H:%M") if meter.created else ""
+        ])
+
+
+    for i in range(1,7):
+        column_letter = get_column_letter(i)
+        length = len(str(sheet[column_letter][0].value))
+        sheet.column_dimensions[column_letter].width = min(length + 3, 50)
+        sheet[column_letter][0].alignment = Alignment(
+            horizontal='center',
+            vertical='center')
+
+    virtual_workbook = BytesIO()
+    workbook.save(virtual_workbook)
+    virtual_workbook.seek(0)
+    return virtual_workbook
+
+
+@user_private_admin_router.callback_query(F.data == 'get_meter_month')
+async def get_meter_month(callback: types.CallbackQuery,
+                        bot: Bot,
+                        session: AsyncSession,
+                        ):
+    await callback.answer()
+    virtual_workbook = await generate_excel_in_memory(session)
+    filename = f"Счетчики воды на {datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    document = BufferedInputFile(
+        file=virtual_workbook.getvalue(),
+        filename=filename
+    )
+    await bot.send_document(
+        chat_id=callback.message.chat.id,
+        document=document,
+        caption="Ваш отчёт готов!"
+    )
 
 
 @user_private_admin_router.callback_query(F.data)
@@ -312,7 +449,10 @@ async def set_meter_cmd(callback_query: types.CallbackQuery,
         '\nВведите показания счётчика.'
     )
     await callback_query.message.answer(msg)
-    await state.set_state(state_mapping[action])
+    try:
+        await state.set_state(state_mapping[action])
+    except:
+        await start_cmd(callback_query.message, state)
     await callback_query.answer()
 
 
@@ -338,10 +478,8 @@ async def save_meter_cmd(message: types.Message,
         await state.clear()
         return
 
-    # Получаем текущие показания за месяц (если есть)
     meter = await orm_get_user_meters_last(session, user.tele_id)
 
-    # Определяем, какое поле обновляем
     water_hot_kitchen_data = None
     water_cold_kitchen_data = None
     water_hot_bath_data = None
@@ -378,7 +516,6 @@ async def save_meter_cmd(message: types.Message,
         water_hot_bath=water_hot_bath_data,
         water_cold_bath=water_cold_bath_data,
     )
-
     await message.answer('✅ Показания сохранены.')
-
     await show_meter_info(message, session, state, apartment)
+
