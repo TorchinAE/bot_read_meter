@@ -100,28 +100,17 @@ async def generate_excel_in_memory_words(session: AsyncSession,):
     """Создаёт Excel-файл в памяти"""
     workbook = Workbook()
     sheet = workbook.active
-    sheet.append([
-        "id",
-        "Слова",
-    ])
+    table_name = 'Запрещённые слова'
+    sheet.append([table_name])
     words = await orm_get_words(session)
-    max_ln = 1
+    max_ln = len(table_name)
 
     for word in words:
-        sheet.append([
-            word.id,
-            word.word
-        ])
-        max_ln = max(max_ln, len(word.word))
+        sheet.append([word])
+        max_ln = max(max_ln, len(word))
 
     column_letter = get_column_letter(1)
-    sheet.column_dimensions[column_letter].width = 10
-    sheet[column_letter][0].alignment = Alignment(
-        horizontal='center',
-        vertical='center')
-
-    column_letter = get_column_letter(2)
-    sheet.column_dimensions[column_letter].width = max_ln
+    sheet.column_dimensions[column_letter].width = max_ln + 2
     sheet[column_letter][0].alignment = Alignment(
         horizontal='center',
         vertical='center')
