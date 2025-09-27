@@ -4,7 +4,9 @@ from dotenv import load_dotenv
 import os
 from aiogram import Bot, Dispatcher, types
 
-from dbase.orm_query import create_restrict_words_db
+import dbase.storage
+from dbase.orm_query import orm_get_words
+
 
 load_dotenv()
 
@@ -35,6 +37,10 @@ async def main():
         commands=private,
         scope=types.BotCommandScopeAllPrivateChats()
     )
+    async with session_maker() as session:
+        words = set(await orm_get_words(session))
+        dbase.storage.restricted_words = set(word.lower() for word in words)
+
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 if __name__ == "__main__":

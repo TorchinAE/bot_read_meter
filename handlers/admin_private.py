@@ -1,7 +1,7 @@
 import datetime
 from io import BytesIO
 
-from aiogram.types import BufferedInputFile
+from aiogram.types import BufferedInputFile, ChatPermissions
 from attr.validators import max_len
 from openpyxl import Workbook
 
@@ -70,6 +70,31 @@ async def restrict_words_cmd(callback: types.CallbackQuery):
     await callback.message.edit_text('Ругательства\nЧто будем делать?',
         reply_markup=get_user_main_btns(btns_edit_del_new)
     )
+
+
+@user_private_admin_router.callback_query(F.data.startswith('block_user_'))
+async def block_user_cmd(callback: types.CallbackQuery, bot:Bot):
+    await callback.answer()
+    datacbk = callback.data.split('_')
+    block_user_id = datacbk[-2]
+    block_chat_id  = datacbk[-1]
+    try:
+        await bot.restrict_chat_member(
+            chat_id=int(block_chat_id),
+            user_id=int(block_user_id),
+            permissions=ChatPermissions(can_send_messages=False)
+        )
+        await callback.answer('Пользователю заблокирована отправка сообщений в чате! Не удален!',
+                              show_alert=True)
+        await callback.message.edit_text(
+            callback.message.text + "\n\n✅ Пользователь успешно ограничен."
+        )
+
+    except Exception as e:
+        await callback.message.edit_text(
+            f"Ошибка: {str(e)}\n Сообщите разработчику", show_alert=True)
+        print(f"Ошибка блокировки: {e}")
+
 
 async def generate_excel_in_memory_words(session: AsyncSession,):
     """Создаёт Excel-файл в памяти"""

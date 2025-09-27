@@ -22,7 +22,7 @@ async def create_restrict_words_db(session: AsyncSession,):
             if word:
                 restrict_words.append(word)
     words_to_add = [Words(word=word) for word in
-                    restrict_words]  # предполагается, что поле называется `word`
+                    restrict_words]
     session.add_all(words_to_add)
     await session.commit()
 
@@ -31,7 +31,7 @@ async def orm_get_words(session: AsyncSession,):
     query = select(Words)
     result = await session.execute(query)
     words = result.scalars().all()
-    return words
+    return [w.word for w in words]
 
 
 async def orm_add_user(
