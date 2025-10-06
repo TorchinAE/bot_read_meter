@@ -1,5 +1,5 @@
+from aiogram import Bot, types
 from aiogram.filters import Filter
-from aiogram import types, Bot
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from dbase.orm_query import orm_get_confirmed
@@ -25,6 +25,8 @@ class IsConfirmedUser(Filter):
     def __init__(self) -> None:
         pass
 
-    async def __call__(self, message: types.Message, bot: Bot, session: AsyncSession) -> bool:
+    async def __call__(
+        self, message: types.Message, bot: Bot, session: AsyncSession
+    ) -> bool:
         user_id = message.from_user.id
         return await orm_get_confirmed(session, user_id)

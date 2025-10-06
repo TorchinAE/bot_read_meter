@@ -1,37 +1,95 @@
+import logging
 from datetime import datetime
-from typing import Optional, Union, Sequence
+from typing import Optional, Sequence, Union
 
-from sqlalchemy import select, desc, func, delete, extract
+from sqlalchemy import delete, desc, extract, func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from common.test_users import test_users
-from dbase.models import User, Meter, Words
+from dbase.models import Meter, User, Words
+
+logger = logging.getLogger(__name__)
 
 
-async def create_restrict_words_db(session: AsyncSession,):
+async def orm_create_test_users(session: AsyncSession):
+    query = select(User)
+    result = await session.execute(query)
+    if result.first():
+        return
+    session.add_all(
+        [
+            User(
+                name=user["name"],
+                apartment=user["apartment"],
+                phone=user["phone"],
+                confirmed=user["confirmed"],
+                tele_id=user["tele_id"],
+            )
+            for user in test_users
+        ]
+    )
+    await session.commit()
+
+
+async def create_restrict_words_db(
+    session: AsyncSession,
+):
     query = select(Words)
     result = await session.execute(query)
     words = result.scalars().first()
     if words:
         return
-    restrict_words =[]
-    with open('ban_words.txt', 'r', encoding='utf-8') as f:
+    restrict_words = []
+    with open("ban_words.txt", "r", encoding="utf-8") as f:
         for line in f:
             word = line.strip()
             if word:
                 restrict_words.append(word)
-    words_to_add = [Words(word=word) for word in
-                    restrict_words]
+    words_to_add = [Words(word=word) for word in restrict_words]
     session.add_all(words_to_add)
     await session.commit()
 
 
-async def orm_get_words(session: AsyncSession,):
+async def orm_get_words(
+    session: AsyncSession,
+):
     query = select(Words)
     result = await session.execute(query)
     words = result.scalars().all()
     return [w.word for w in words]
+
+
+async def change_restrict_word(session: AsyncSession, old_word: str, new_word: str):
+    try:
+        change = await orm_get_word_obj(session, old_word)
+        change.word = new_word
+        await session.commit()
+        return True
+    except IntegrityError:
+        await session.rollback()
+        return False
+
+
+async def orm_get_word_obj(session: AsyncSession, word: str):
+    query = select(Words).where(Words.word == word)
+    result = await session.execute(query)
+    return result.scalars().first()
+
+
+async def orm_del_word_obj(session: AsyncSession, word: Words):
+    await session.delete(word)
+    await session.commit()
+
+
+async def orm_add_word(session: AsyncSession, word: str):
+    try:
+        query = insert(Words).values(word=word)
+        await session.execute(query)
+        await session.commit()
+    except Exception as e:
+        logger.warning(f'Ошибка добавления слова "{word}" {e}')
 
 
 async def orm_add_user(
@@ -47,11 +105,13 @@ async def orm_add_user(
     user = result.scalars().first()
     if user is None:
         session.add(
-            User(tele_id=tele_id,
-                 name=name,
-                 apartment=apartment,
-                 phone=phone,
-                 confirmed=confirmed)
+            User(
+                tele_id=tele_id,
+                name=name,
+                apartment=apartment,
+                phone=phone,
+                confirmed=confirmed,
+            )
         )
     else:
         user.name = name or user.name
@@ -61,23 +121,7 @@ async def orm_add_user(
     await session.commit()
 
 
-async def orm_create_test_users(session: AsyncSession):
-    query = select(User)
-    result = await session.execute(query)
-    if result.first():
-        return
-    session.add_all([User(
-        name=user['name'],
-        apartment=user['apartment'],
-        phone=user['phone'],
-        confirmed=user['confirmed'],
-        tele_id=user['tele_id']
-    ) for user in test_users])
-
-    await session.commit()
-
-
-async def orm_get_user_tele(session: AsyncSession, tele_id:int) -> User:
+async def orm_get_user_tele(session: AsyncSession, tele_id: int) -> User:
     query = select(User).where(User.tele_id == tele_id)
     result = await session.execute(query)
     user = result.scalars().first()
@@ -91,35 +135,37 @@ async def orm_get_users_confirm(session: AsyncSession) -> Sequence[User]:
     return users
 
 
-async def orm_get_users_to_apart(session: AsyncSession,
-                                 start_apart: int,
-                                 fnsh_apart: int) -> list[User]:
-    query = select(User).where(User.apartment >= start_apart,
-                               User.apartment<= fnsh_apart,
-                               User.confirmed == True)
+async def orm_get_users_to_apart(
+    session: AsyncSession, start_apart: int, fnsh_apart: int
+) -> list[User]:
+    query = select(User).where(
+        User.apartment >= start_apart,
+        User.apartment <= fnsh_apart,
+        User.confirmed == True,
+    )
     result = await session.execute(query)
     users = result.scalars().all()
     return list(users)
 
 
-async def orm_del_user(session: AsyncSession, user_tele_id:int) -> bool:
+async def orm_del_user(session: AsyncSession, user_tele_id: int) -> bool:
     query = delete(User).where(User.tele_id == user_tele_id)
     result = await session.execute(query)
     await session.commit()
     return result.rowcount > 0
 
 
-async def orm_get_phone(session: AsyncSession, phone:str) ->  Union[str, None]:
+async def orm_get_phone(session: AsyncSession, phone: str) -> Union[str, None]:
     query = select(User).where(User.phone == phone)
     result = await session.execute(query)
-    user =result.scalars().first()
+    user = result.scalars().first()
     return user.phone if user else None
 
 
-async def orm_get_user_apartment(session: AsyncSession, apartment:str) -> User:
+async def orm_get_user_apartment(session: AsyncSession, apartment: str) -> User:
     query = select(User).where(User.apartment == apartment)
     result = await session.execute(query)
-    user =result.scalars().first()
+    user = result.scalars().first()
     return user
 
 
@@ -146,21 +192,26 @@ async def orm_add_update_meter(
     water_cold_kitchen: Optional[int] = None,
 ):
     now = datetime.now()
-    query = select(Meter).where(
-        Meter.user_id == user_id,
-        func.extract('year', Meter.created) == now.year,
-        func.extract('month', Meter.created) == now.month
-    ).order_by(desc(Meter.created))
+    query = (
+        select(Meter)
+        .where(
+            Meter.user_id == user_id,
+            func.extract("year", Meter.created) == now.year,
+            func.extract("month", Meter.created) == now.month,
+        )
+        .order_by(desc(Meter.created))
+    )
     result = await session.execute(query)
     meter = result.scalars().first()
     if meter is None:
         session.add(
-            Meter(user_id=user_id,
-                  water_hot_bath=water_hot_bath,
-                  water_cold_bath=water_cold_bath,
-                  water_hot_kitchen=water_hot_kitchen,
-                  water_cold_kitchen=water_cold_kitchen,
-                  )
+            Meter(
+                user_id=user_id,
+                water_hot_bath=water_hot_bath,
+                water_cold_bath=water_cold_bath,
+                water_hot_kitchen=water_hot_kitchen,
+                water_cold_kitchen=water_cold_kitchen,
+            )
         )
     else:
         meter.user_id = user_id or meter.user_id
@@ -171,26 +222,15 @@ async def orm_add_update_meter(
     await session.commit()
 
 
-# async def orm_get_user_meters(session: AsyncSession,
-#                               user_id: int) ->  Sequence[Meter]:
-#     query = (
-#         select(Meter).
-#         where(Meter.user_id == user_id).
-#         order_by(desc(Meter.created))
-#     )
-#     result = await session.execute(query)
-#     return result.scalars().all()
-
-
-async def orm_get_all_meters_to_month(session: AsyncSession) ->  Sequence[Meter]:
+async def orm_get_all_meters_to_month(session: AsyncSession) -> Sequence[Meter]:
     now = datetime.now()
     query = (
         select(Meter)
         .join(User)
         .options(joinedload(Meter.user))
         .where(
-            extract('year', Meter.created) == now.year,
-            extract('month', Meter.created) == now.month
+            extract("year", Meter.created) == now.year,
+            extract("month", Meter.created) == now.month,
         )
         .order_by(User.apartment, desc(Meter.created))
     )
@@ -198,7 +238,10 @@ async def orm_get_all_meters_to_month(session: AsyncSession) ->  Sequence[Meter]
     return result.scalars().all()
 
 
-async def orm_get_user_meters_last(session: AsyncSession, user_id: int) -> Optional[Meter]:
+async def orm_get_user_meters_last(
+    session: AsyncSession, user_id: int
+) -> Optional[Meter]:
+
     query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
     result = await session.execute(query)
     meter = result.scalars().first()
@@ -206,23 +249,26 @@ async def orm_get_user_meters_last(session: AsyncSession, user_id: int) -> Optio
 
 
 async def orm_get_meter_from_user_month_year(
-        session: AsyncSession,
-        user_id: int,
-        month:  Union[int, None] = None,
-        year: Union[int, None] = None,
-)->  Union[Meter, None]:
+    session: AsyncSession,
+    user_id: int,
+    month: Union[int, None] = None,
+    year: Union[int, None] = None,
+) -> Union[Meter, None]:
 
     if month is None:
         month = datetime.now().month
     if year is None:
         year = datetime.now().year
 
-    query = (select(Meter).where(
+    query = (
+        select(Meter)
+        .where(
             Meter.user_id == user_id,
-                func.extract('year', Meter.created) == year,
-                func.extract('month', Meter.created) == month)
-             .order_by(desc(Meter.created))
-             .limit(1)
+            func.extract("year", Meter.created) == year,
+            func.extract("month", Meter.created) == month,
+        )
+        .order_by(desc(Meter.created))
+        .limit(1)
     )
     result = await session.execute(query)
     return result.scalars().first()

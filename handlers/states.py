@@ -1,6 +1,6 @@
 from calendar import SATURDAY
 
-from aiogram.fsm.state import StatesGroup, State
+from aiogram.fsm.state import State, StatesGroup
 
 
 class AddUser(StatesGroup):
@@ -37,3 +37,10 @@ class SetApart(StatesGroup):
 
 class SetApartMetr(StatesGroup):
     apartment = State()
+
+
+class ChangeWords(StatesGroup):
+    input_word = State()
+    edit_word = State()
+    delete_word = State()
+    add_word = State()

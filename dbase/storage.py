@@ -1,2 +1,1 @@
-
 restricted_words = set()
