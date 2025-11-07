@@ -45,11 +45,17 @@ async def start_cmd(message: types.Message, session: AsyncSession):
             " чата за авторизацией."
         )
 
-        btns = {"Заполнить данные": "insert_data_user", "Нет, спасибо": "cancel_data"}
+        btns = {
+            "Заполнить данные": "insert_data_user",
+            "Нет, спасибо": "cancel_data",
+        }
     else:
         text_mgs += "О! Вижу ты тут не в первой. Будешь уточнять свои данные?"
 
-        btns = {"Уточнить данные": "edit_data_user", "Нет, спасибо": "cancel_data"}
+        btns = {
+            "Уточнить данные": "edit_data_user",
+            "Нет, спасибо": "cancel_data",
+        }
     await message.answer(text_mgs, reply_markup=get_user_main_btns(btns))
 
 
@@ -63,8 +69,10 @@ async def add_user(callback_query: types.CallbackQuery, state: FSMContext):
 
 
 @user_private_router.callback_query(F.data == "edit_data_user")
-async def add_user(
-    callback_query: types.CallbackQuery, state: FSMContext, session: AsyncSession
+async def edit_user(
+    callback_query: types.CallbackQuery,
+    state: FSMContext,
+    session: AsyncSession,
 ):
     await callback_query.message.answer(
         "Хорошо, давайте отредактируем "
@@ -73,15 +81,21 @@ async def add_user(
         'введите "." (точку)',
         reply_markup=types.ReplyKeyboardRemove(),
     )
-    user = await orm_get_user_tele(session=session, tele_id=callback_query.from_user.id)
+    user = await orm_get_user_tele(
+        session=session, tele_id=callback_query.from_user.id
+    )
     await callback_query.message.answer(f"Текущее имя {user.name}. Введите имя")
     await state.set_state(AddUser.name)
     await callback_query.answer()
 
 
 @user_private_router.message(AddUser.name, F.text)
-async def add_name(message: types.Message, state: FSMContext, session: AsyncSession):
-    user = await orm_get_user_tele(session=session, tele_id=message.from_user.id)
+async def add_name(
+    message: types.Message, state: FSMContext, session: AsyncSession
+):
+    user = await orm_get_user_tele(
+        session=session, tele_id=message.from_user.id
+    )
     if message.text == "." and user:
         await state.update_data(name=user.name)
     else:
@@ -98,13 +112,18 @@ async def add_name(message: types.Message, state: FSMContext, session: AsyncSess
 async def add_apartment(
     message: types.Message, state: FSMContext, session: AsyncSession
 ):
-    user = await orm_get_user_tele(session=session, tele_id=message.from_user.id)
+    user = await orm_get_user_tele(
+        session=session, tele_id=message.from_user.id
+    )
     if message.text == "." and user:
         await state.update_data(apartment=user.apartment)
     else:
-        if not message.text.isdigit() or not (0 < int(message.text) <= APARTMENTCOUNT):
+        if not message.text.isdigit() or not (
+            0 < int(message.text) <= APARTMENTCOUNT
+        ):
             await message.answer(
-                "Не корректный ввод номера квартиры. " "Такой квартиры в доме нет."
+                "Не корректный ввод номера квартиры. "
+                "Такой квартиры в доме нет."
             )
             return
         await state.update_data(apartment=message.text)
@@ -118,23 +137,30 @@ async def add_apartment(
 
 
 @user_private_router.message(AddUser.phone, F.text)
-async def add_phone(message: types.Message,
-                    state: FSMContext,
-                    session: AsyncSession,
-                    bot:Bot):
-    user = await orm_get_user_tele(session=session, tele_id=message.from_user.id)
+async def add_phone(
+    message: types.Message, state: FSMContext, session: AsyncSession, bot: Bot
+):
+    user = await orm_get_user_tele(
+        session=session, tele_id=message.from_user.id
+    )
     if message.text == "." and user:
         await state.update_data(phone=user.phone)
     else:
         phone = message.text
-        if not phone.startswith("+7") or len(phone) != 12 or not phone[1:].isdigit():
+        if (
+            not phone.startswith("+7")
+            or len(phone) != 12
+            or not phone[1:].isdigit()
+        ):
             await message.answer(
                 "Не корректный формат телефона. "
                 "Введите телефон в формате +7ХХХХХХХХХХ"
             )
             return
         if await orm_get_phone(session=session, phone=phone):
-            await message.answer(f"Номер телефона {phone} уже занят, " "введите другой")
+            await message.answer(
+                f"Номер телефона {phone} уже занят, " "введите другой"
+            )
             return
         await state.update_data(phone=message.text)
     data = await state.get_data()
@@ -146,7 +172,7 @@ async def add_phone(message: types.Message,
     )
     await bot.send_message(
         chat_id=user.tele_id,
-        text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}."
+        text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}.",
     )
     await state.clear()
 
@@ -160,5 +186,10 @@ async def cancel_cmd(callback_query: types.CallbackQuery, state: FSMContext):
 
 @user_private_router.callback_query()
 async def debug_all_callbacks(callback_query: types.CallbackQuery):
-    print(f"Получен callback_data в user_private_router:'" f"{callback_query.data}")
-    await callback_query.answer("Обработка не найдена для: " + callback_query.data)
+    print(
+        f"Получен callback_data в user_private_router:'"
+        f"{callback_query.data}"
+    )
+    await callback_query.answer(
+        "Обработка не найдена для: " + callback_query.data
+    )

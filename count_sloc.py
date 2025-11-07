@@ -1,28 +1,30 @@
-import os
 import openpyxl
 from pathlib import Path
+
 
 def is_code_line(line: str) -> bool:
     """Возвращает True, если строка считается строкой кода."""
     stripped = line.strip()
     # Пустая строка или только комментарий — не код
-    if not stripped or stripped.startswith('#'):
+    if not stripped or stripped.startswith("#"):
         return False
     return True
+
 
 def count_code_lines(filepath: Path) -> int:
     """Считает количество строк кода в .py файле."""
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, "r", encoding="utf-8") as f:
             lines = f.readlines()
         return sum(1 for line in lines if is_code_line(line))
     except (UnicodeDecodeError, OSError) as e:
         print(f"⚠️ Не удалось прочитать файл {filepath}: {e}")
         return 0
 
+
 def main():
-    current_dir = Path('.')
-    py_files = list(current_dir.rglob('*.py'))
+    current_dir = Path(".")
+    py_files = list(current_dir.rglob("*.py"))
 
     if not py_files:
         print("❌ В проекте не найдено .py файлов.")
@@ -51,6 +53,7 @@ def main():
     workbook.save(output_file)
     print(f"✅ Результат сохранён в {output_file}")
     print(f"📊 Всего строк кода: {total_lines}")
+
 
 if __name__ == "__main__":
     main()

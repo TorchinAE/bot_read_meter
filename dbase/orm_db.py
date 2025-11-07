@@ -1,6 +1,10 @@
 import os
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from dbase.models import Base
 from dbase.orm_query import create_restrict_words_db, orm_create_test_users

@@ -1,5 +1,4 @@
 from datetime import datetime
-from html.parser import HTMLParser
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart, StateFilter
@@ -26,7 +25,9 @@ user_private_confirmed_router.callback_query.filter(IsConfirmedUser())
 
 
 @user_private_confirmed_router.message(CommandStart())
-async def start_cmd(message: types.Message, session: AsyncSession, state: FSMContext):
+async def start_cmd(
+    message: types.Message, session: AsyncSession, state: FSMContext
+):
     await state.clear()
     user = await orm_get_user_tele(session, message.from_user.id)
     text_mgs = f"Приветствую Вас, {user.name}! Выберите счётчик."
@@ -52,7 +53,9 @@ async def about_cmd(message: types.Message, state: FSMContext):
 
 @user_private_confirmed_router.callback_query(F.data == "all")
 async def all_cmd(
-    callback_query: types.CallbackQuery, session: AsyncSession, state: FSMContext
+    callback_query: types.CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
 ):
     await state.clear()
     meter = await orm_get_user_meters_last(session, callback_query.from_user.id)
@@ -75,9 +78,7 @@ async def all_cmd(
             data_now.month != last_update_date.month
             or data_now.year != last_update_date.year
         ):
-            msg += (
-                "\n\nПоказания на <b>текущий месяц не обнаружены</b>. Передайте показания"
-            )
+            msg += "\n\nПоказания на <b>текущий месяц не обнаружены</b>. Передайте показания"
     else:
         msg = f'Показания на {data_now.strftime("%d-%m-%y")} <b>не найдены</b>.'
 
@@ -88,7 +89,9 @@ async def all_cmd(
 
 @user_private_confirmed_router.callback_query(F.data)
 async def set_meter_cmd(
-    callback_query: types.CallbackQuery, session: AsyncSession, state: FSMContext
+    callback_query: types.CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
 ):
 
     action = callback_query.data
@@ -135,7 +138,9 @@ async def save_meter_cmd(
     water_cold_kitchen_data = None
     water_hot_bath_data = None
     water_cold_bath_data = None
-    meter = await orm_get_meter_from_user_month_year(session, message.from_user.id)
+    meter = await orm_get_meter_from_user_month_year(
+        session, message.from_user.id
+    )
     current_state = await state.get_state()
     print("current_state==", current_state)
     meter_value = None
@@ -151,7 +156,9 @@ async def save_meter_cmd(
     elif current_state == AddMeter.water_cold_bath:
         meter_value = meter.water_cold_bath if meter else None
         water_cold_bath_data = message.text
-    validate = await validate_data_meter(message, state, message.text, meter_value)
+    validate = await validate_data_meter(
+        message, state, message.text, meter_value
+    )
     print("validate==", validate, "meter_value==", meter_value)
     if not validate or current_state is None:
         return
@@ -184,4 +191,6 @@ async def debug_all_callbacks(callback_query: types.CallbackQuery):
     print(
         f"Получен user_private_confirmed_router callback_data: '{callback_query.data}'"
     )
-    await callback_query.answer("Обработка не найдена для: " + callback_query.data)
+    await callback_query.answer(
+        "Обработка не найдена для: " + callback_query.data
+    )

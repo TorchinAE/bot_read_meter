@@ -1,4 +1,12 @@
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -28,7 +36,7 @@ class User(Base):
 
 
 class Power(Base):
-    __tablename__ = 'power'
+    __tablename__ = "power"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     apartment: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -38,8 +46,8 @@ class Power(Base):
 
     def __repr__(self):
         return (
-            f'{self.apartment} кв: T0 - {self.t0}, '
-            f'T1 - {self.t1}, T2 - {self.t2}'
+            f"{self.apartment} кв: T0 - {self.t0}, "
+            f"T1 - {self.t1}, T2 - {self.t2}"
         )
 
 
@@ -87,5 +95,7 @@ class BanUsers(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     unblock_time: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
-    confirmed: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
+    confirmed: Mapped[bool] = mapped_column(
+        Boolean, nullable=True, default=False
+    )
     user: Mapped["User"] = relationship(back_populates="ban_records")

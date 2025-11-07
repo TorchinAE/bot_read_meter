@@ -7,15 +7,14 @@ from aiogram import Bot, Dispatcher, types
 from dotenv import load_dotenv
 
 import dbase.storage
-from dbase.orm_query import orm_get_words, orm_get_admin_list
+from dbase.orm_query import orm_get_words
 
 load_dotenv()
 
 from common.bot_cmds_list import private
 from dbase.orm_db import create_db, session_maker
 from handlers.admin_private import user_private_admin_router
-from handlers.user_group import user_group_router, cleanup_expired_bans, \
-    get_admin
+from handlers.user_group import user_group_router, cleanup_expired_bans
 from handlers.user_private import user_private_router
 from handlers.user_private_comfirmed import user_private_confirmed_router
 from middlewares.db import DataBaseSession
@@ -28,7 +27,7 @@ log_handler = RotatingFileHandler(
     "log_read_meter_telebot.log",
     maxBytes=50_000_000,
     backupCount=5,
-    encoding="utf-8"
+    encoding="utf-8",
 )
 log_handler.setFormatter(log_formatter)
 

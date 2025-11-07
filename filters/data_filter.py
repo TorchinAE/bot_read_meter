@@ -5,7 +5,10 @@ from handlers.const import APARTMENTCOUNT
 
 
 async def validate_data_meter(
-    message: types.Message, state: FSMContext, data_meter: str, now_meter: int = 0
+    message: types.Message,
+    state: FSMContext,
+    data_meter: str,
+    now_meter: int = 0,
 ) -> bool:
     current_state = await state.get_state()
     if current_state is None:
@@ -39,7 +42,9 @@ async def validate_apart(message: types.Message) -> bool:
         await message.answer("Ожидается число")
         return False
     if int(apart) > APARTMENTCOUNT:
-        await message.answer(f"Номер квартиры не может быть больше {APARTMENTCOUNT}")
+        await message.answer(
+            f"Номер квартиры не может быть больше {APARTMENTCOUNT}"
+        )
         return False
     print("validate_apart==True")
     return True

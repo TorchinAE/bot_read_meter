@@ -8,8 +8,12 @@ from aiogram.types import ChatMemberUpdated
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import dbase.storage
-from dbase.orm_query import post_block_user, orm_add_admins, get_block_users, \
-    remove_block_user
+from dbase.orm_query import (
+    post_block_user,
+    orm_add_admins,
+    get_block_users,
+    remove_block_user,
+)
 from filters.chat_types import ChatTypeFilter
 from handlers.admin_private import logger
 from kbds.kbds import get_user_main_btns
@@ -17,7 +21,10 @@ from kbds.kbds import get_user_main_btns
 user_group_router = Router()
 user_group_router.message.filter(ChatTypeFilter(["group", "supergroup"]))
 
-async def cleanup_expired_bans(session_maker, bot: Bot, interval: int = 60) -> None:
+
+async def cleanup_expired_bans(
+    session_maker, bot: Bot, interval: int = 60
+) -> None:
     while True:
         try:
             async with session_maker() as session:
@@ -33,10 +40,12 @@ async def cleanup_expired_bans(session_maker, bot: Bot, interval: int = 60) -> N
                             try:
                                 await bot.send_message(
                                     chat_id=ban.user_tele_id,
-                                    text="Срок вашей блокировки в чате истёк — вы разблокированы."
+                                    text="Срок вашей блокировки в чате истёк — вы разблокированы.",
                                 )
                             except Exception as e1:
-                                logger.error(f"Ошибка отправки сообщения заблокированному юзеру: {e1}/ user {ban.user_tele_id}")
+                                logger.error(
+                                    f"Ошибка отправки сообщения заблокированному юзеру: {e1}/ user {ban.user_tele_id}"
+                                )
         except Exception as e:
             logger.error(f"cleanup_expired_bans error: {e}")
         await asyncio.sleep(interval)
@@ -54,7 +63,8 @@ async def get_admin(message: types.Message, bot: Bot, session: AsyncSession):
         admin_tele_ids = [
             admin.user.id
             for admin in chat_admins
-            if admin.status in ("creator", "administrator") and not admin.user.is_bot
+            if admin.status in ("creator", "administrator")
+            and not admin.user.is_bot
         ]
         await orm_add_admins(session, admin_tele_ids, chat_id, bot)
         bot.my_admin_list = admin_tele_ids
@@ -66,10 +76,13 @@ async def get_admin(message: types.Message, bot: Bot, session: AsyncSession):
         logger.error(f"Ошибка при обработке /admin: {e}")
         await message.answer("Не удалось обновить список админов.")
 
+
 # TODO обновить место получения админов
 
 
-async def delete_if_blocked(message: types.Message, session: AsyncSession) -> bool:
+async def delete_if_blocked(
+    message: types.Message, session: AsyncSession
+) -> bool:
     try:
         ban_users = await get_block_users(session)
         banned_tele_ids = {ban.user_tele_id for ban in ban_users}
@@ -85,12 +98,15 @@ async def delete_if_blocked(message: types.Message, session: AsyncSession) -> bo
             await message.delete()
             await message.bot.send_message(
                 chat_id=message.from_user.id,
-                text='Вы заблокированы и не можете отправлять сообщения в этот чат.'            )
+                text="Вы заблокированы и не можете отправлять сообщения в этот чат.",
+            )
             logger.info(
                 f"Удалено сообщение заблокированного пользователя {message.from_user.id} в чате {message.chat.id}"
             )
         except Exception as e:
-            logger.error(f"Не удалось удалить сообщение заблокированного пользователя: {e}")
+            logger.error(
+                f"Не удалось удалить сообщение заблокированного пользователя: {e}"
+            )
         return True
 
     return False
@@ -98,9 +114,7 @@ async def delete_if_blocked(message: types.Message, session: AsyncSession) -> bo
 
 @user_group_router.edited_message()
 @user_group_router.message()
-async def cleaner(message: types.Message,
-                  bot: Bot,
-                  session: AsyncSession):
+async def cleaner(message: types.Message, bot: Bot, session: AsyncSession):
     if not message.text:
         return
 
@@ -129,7 +143,7 @@ async def cleaner(message: types.Message,
             chat_id=message.chat.id,
             name_admin=creator_name,
             reason=message.text,
-            unblock_time=None
+            unblock_time=None,
         )
         if creator_id:
             text = (
@@ -140,7 +154,7 @@ async def cleaner(message: types.Message,
             )
             btns_block = {
                 "Заблокировать": f"block_{ban_write_id}",
-                "Игнорировать": "cancel",
+                "Игнорировать": f"del_block_{ban_write_id}",
             }
             await message.bot.send_message(
                 chat_id=creator_id,
@@ -150,16 +164,19 @@ async def cleaner(message: types.Message,
 
 
 @user_group_router.chat_member()
-async def on_user_added(event: ChatMemberUpdated, bot:Bot, session: AsyncSession):
+async def on_user_added(
+    event: ChatMemberUpdated, bot: Bot, session: AsyncSession
+):
     user = event.new_chat_member.user
     ban_users = await get_block_users(session)
     banned_tele_ids = {ban.user_tele_id for ban in ban_users}
     logger.info(
-        f"Проверка входящего  {user.full_name} (ID: {user.id}) в {ban_users}")
+        f"Проверка входящего  {user.full_name} (ID: {user.id}) в {ban_users}"
+    )
     if (not user.is_bot) or (user.id in banned_tele_ids):
 
         if event.new_chat_member.status not in {"left", "kicked", "restricted"}:
-            text = f'Добро пожаловать, {user.full_name}'
+            text = f"Добро пожаловать, {user.full_name}"
             await event.bot.send_message(event.chat.id, text)
 
     else:
@@ -167,12 +184,7 @@ async def on_user_added(event: ChatMemberUpdated, bot:Bot, session: AsyncSession
         await kick_user(bot, chat_id, user.id)
 
 
-async def kick_user(bot:Bot, chat_id, user_id):
-    await bot.ban_chat_member(
-        chat_id=chat_id,
-        user_id=user_id,
-        until_date=1
-    )
+async def kick_user(bot: Bot, chat_id, user_id):
+    await bot.ban_chat_member(chat_id=chat_id, user_id=user_id, until_date=1)
 
-    logger.info(
-        f"Кикнут  ID: {user_id} из чата {chat_id}")
+    logger.info(f"Кикнут  ID: {user_id} из чата {chat_id}")

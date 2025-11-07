@@ -1,5 +1,3 @@
-from calendar import SATURDAY
-
 from aiogram.fsm.state import State, StatesGroup
 
 
@@ -51,4 +49,4 @@ class GetPower(StatesGroup):
     t0 = State()
     t1 = State()
     t2 = State()
-    next_ap = State ()
+    next_ap = State()

@@ -65,7 +65,9 @@ async def orm_get_words(
     return [w.word for w in words]
 
 
-async def change_restrict_word(session: AsyncSession, old_word: str, new_word: str):
+async def change_restrict_word(
+    session: AsyncSession, old_word: str, new_word: str
+):
     try:
         change = await orm_get_word_obj(session, old_word)
         change.word = new_word
@@ -124,11 +126,17 @@ async def orm_add_user(
         user.confirmed = confirmed
     await session.commit()
 
-async def orm_get_user_from_apartment(session: AsyncSession, apartment: int) -> User:
-    query = select(User).where(User.apartment == apartment, User.confirmed.is_(True))
+
+async def orm_get_user_from_apartment(
+    session: AsyncSession, apartment: int
+) -> User:
+    query = select(User).where(
+        User.apartment == apartment, User.confirmed.is_(True)
+    )
     result = await session.execute(query)
     user = result.scalars().first()
     return user
+
 
 async def orm_get_user_tele(session: AsyncSession, tele_id: int) -> User:
     query = select(User).where(User.tele_id == tele_id)
@@ -138,16 +146,15 @@ async def orm_get_user_tele(session: AsyncSession, tele_id: int) -> User:
 
 
 async def orm_get_users_confirm(session: AsyncSession) -> Sequence[User]:
-    query = select(User).where(User.confirmed == True)
+    query = select(User).where(User.confirmed.is_(True))
     result = await session.execute(query)
     users = result.scalars().all()
     return users
 
 
-async def orm_add_admins(session: AsyncSession,
-                         admin_tele_ids: list[int],
-                         chat_id,
-                         bot:Bot) -> None:
+async def orm_add_admins(
+    session: AsyncSession, admin_tele_ids: list[int], chat_id, bot: Bot
+) -> None:
 
     query = select(User).where(User.tele_id.in_(admin_tele_ids))
     result = await session.execute(query)
@@ -178,7 +185,8 @@ async def orm_add_admins(session: AsyncSession,
         )
     await session.commit()
 
-async def orm_get_admin_list(session:AsyncSession) -> Sequence[User]:
+
+async def orm_get_admin_list(session: AsyncSession) -> Sequence[User]:
     query = select(User).where(User.admin.is_(True))
     result = await session.execute(query)
     return result.scalars().all()
@@ -190,7 +198,7 @@ async def orm_get_users_to_apart(
     query = select(User).where(
         User.apartment >= start_apart,
         User.apartment <= fnsh_apart,
-        User.confirmed == True,
+        User.confirmed.is_(True),
     )
     result = await session.execute(query)
     users = result.scalars().all()
@@ -218,7 +226,7 @@ async def orm_get_user_apartment(session: AsyncSession, apartment: str) -> User:
     return user
 
 
-async def orm_get_count_need_confirmed(session:AsyncSession) -> int:
+async def orm_get_count_need_confirmed(session: AsyncSession) -> int:
     query = select(func.count(User.id)).where(User.confirmed.is_(False))
     result = await session.execute(query)
     return result.scalar_one()
@@ -273,9 +281,10 @@ async def orm_add_update_meter(
         meter.water_hot_bath = water_hot_bath or meter.water_hot_bath
         meter.water_cold_bath = water_cold_bath or meter.water_cold_bath
         meter.water_hot_kitchen = water_hot_kitchen or meter.water_hot_kitchen
-        meter.water_cold_kitchen = water_cold_kitchen or meter.water_cold_kitchen
+        meter.water_cold_kitchen = (
+            water_cold_kitchen or meter.water_cold_kitchen
+        )
     await session.commit()
-
 
 
 async def orm_add_update_power(
@@ -318,14 +327,16 @@ async def orm_add_update_power(
         await session.rollback()
         return False
 
-async def post_block_user (session: AsyncSession,
-                           user_tele_id: int,
-                           ban_admin_tele_id: int,
-                           chat_id:int,
-                           name_admin: str,
-                           reason: str,
-                           unblock_time: DateTime
-                           ) -> int:
+
+async def post_block_user(
+    session: AsyncSession,
+    user_tele_id: int,
+    ban_admin_tele_id: int,
+    chat_id: int,
+    name_admin: str,
+    reason: str,
+    unblock_time: DateTime,
+) -> int:
     try:
         ban = BanUsers(
             user_tele_id=user_tele_id,
@@ -348,23 +359,22 @@ async def post_block_user (session: AsyncSession,
         raise
 
 
-
-async def get_block_users(session: AsyncSession)  -> Sequence[BanUsers]:
+async def get_block_users(session: AsyncSession) -> Sequence[BanUsers]:
     result = await session.execute(
-        select(BanUsers).
-        where(BanUsers.confirmed == True))
+        select(BanUsers).where(BanUsers.confirmed.is_(True))
+    )
     return result.scalars().all()
 
 
-async def get_block_obj(session: AsyncSession,
-                        id_block:int)  -> Optional[BanUsers]:
+async def get_block_obj(
+    session: AsyncSession, id_block: int
+) -> Optional[BanUsers]:
     return await session.get(BanUsers, id_block)
 
 
-async def set_block(session: AsyncSession,
-                    id_block:int,
-                    set_bool:bool,
-                    unblock_time:DateTime) -> None:
+async def set_block(
+    session: AsyncSession, id_block: int, set_bool: bool, unblock_time: DateTime
+) -> None:
     query = (
         update(BanUsers)
         .where(BanUsers.id == id_block)
@@ -377,8 +387,16 @@ async def set_block(session: AsyncSession,
 
 
 async def remove_block_user(session: AsyncSession, user_tele_id: int):
-    await session.execute(delete(BanUsers).where(BanUsers.user_tele_id == user_tele_id))
+    await session.execute(
+        delete(BanUsers).where(BanUsers.user_tele_id == user_tele_id)
+    )
     await session.commit()
+
+
+async def remove_block_user_id(session: AsyncSession, id: int):
+    await session.execute(delete(BanUsers).where(BanUsers.id == id))
+    await session.commit()
+
 
 ################# METERS#######################################
 async def orm_get_all_meters_to_month(session: AsyncSession) -> Sequence[Meter]:
@@ -415,7 +433,11 @@ async def orm_get_user_meters_last(
     session: AsyncSession, user_id: int
 ) -> Optional[Meter]:
 
-    query = select(Meter).where(Meter.user_id == user_id).order_by(desc(Meter.created))
+    query = (
+        select(Meter)
+        .where(Meter.user_id == user_id)
+        .order_by(desc(Meter.created))
+    )
     result = await session.execute(query)
     meter = result.scalars().first()
     return meter

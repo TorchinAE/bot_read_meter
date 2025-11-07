@@ -12,6 +12,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
 from sqlalchemy.ext.asyncio import AsyncSession
+import dbase.storage
 
 from dbase.orm_query import (
     change_restrict_word,
@@ -27,15 +28,29 @@ from dbase.orm_query import (
     orm_get_users_confirm,
     orm_get_users_to_apart,
     orm_get_word_obj,
-    orm_get_words, get_block_obj, set_block, post_block_user,
-    orm_get_count_need_confirmed, orm_get_all_energy_to_month,
+    orm_get_words,
+    get_block_obj,
+    set_block,
+    post_block_user,
+    orm_get_count_need_confirmed,
+    orm_get_all_energy_to_month,
     orm_add_update_power,
+    remove_block_user_id,
 )
 from filters.chat_types import ChatTypeFilter, IsAdmin
-from filters.data_filter import validate_apart, validate_data_meter, validate_porch
+from filters.data_filter import (
+    validate_apart,
+    validate_data_meter,
+    validate_porch,
+)
 from handlers.const import PORCH_APART, APARTMENTCOUNT
-from handlers.states import ChangeMeter, ChangeWords, PorchMessage, SetApart, \
-    GetPower
+from handlers.states import (
+    ChangeMeter,
+    ChangeWords,
+    PorchMessage,
+    SetApart,
+    GetPower,
+)
 from kbds.kbds import (
     btns,
     btns_admin,
@@ -53,12 +68,16 @@ user_private_admin_router.callback_query.filter(IsAdmin())
 
 
 @user_private_admin_router.message(Command("menu"))
-async def nemu_cmd(message: types.Message, state: FSMContext, session:AsyncSession):
+async def nemu_cmd(
+    message: types.Message, state: FSMContext, session: AsyncSession
+):
     await start_cmd(message, state, session)
 
 
 @user_private_admin_router.message(Command("about"))
-async def about_cmd(message: types.Message, state: FSMContext, session:AsyncSession):
+async def about_cmd(
+    message: types.Message, state: FSMContext, session: AsyncSession
+):
     text_mgs = (
         f"Приветствую Вас, {message.from_user.username}!\n"
         "Это бот для жителей дома №6 мкр. Рождественский."
@@ -70,7 +89,9 @@ async def about_cmd(message: types.Message, state: FSMContext, session:AsyncSess
 
 
 @user_private_admin_router.message(CommandStart())
-async def start_cmd(message: types.Message, state: FSMContext, session: AsyncSession):
+async def start_cmd(
+    message: types.Message, state: FSMContext, session: AsyncSession
+):
     await state.clear()
     text_mgs = "Добро пожаловать , Администратор"
     n_count = await orm_get_count_need_confirmed(session)
@@ -81,9 +102,7 @@ async def start_cmd(message: types.Message, state: FSMContext, session: AsyncSes
 
 @user_private_admin_router.callback_query(F.data == "cancel")
 async def cancel_cmd(
-    callback: types.CallbackQuery,
-    state: FSMContext,
-    session: AsyncSession
+    callback: types.CallbackQuery, state: FSMContext, session: AsyncSession
 ):
     await callback.answer()
     await callback.bot.delete_message(
@@ -106,7 +125,7 @@ async def edit_word_cmd(
 ):
     await get_word_cmd(callback, session)
     await callback.message.edit_text(
-        f"Введите изменяемое слово.\n" f"Полный список слов Вам выслан."
+        "Введите изменяемое слово.\nПолный список слов Вам выслан."
     )
     await state.set_state(ChangeWords.edit_word)
 
@@ -119,7 +138,9 @@ async def state_enter_edit_word_cmd(
     word_obj = await orm_get_word_obj(session, word)
     if not word_obj:
         btns = {"Ввести заново": "edit_word", "Отмена": "cancel"}
-        await message.answer("Слово не найдено.", reply_markup=get_user_main_btns(btns))
+        await message.answer(
+            "Слово не найдено.", reply_markup=get_user_main_btns(btns)
+        )
         return
     await state.update_data(old_word=word_obj)
     await message.answer(f'Принято слово для изменения "{word}"')
@@ -140,9 +161,13 @@ async def input_word_cmd(
 
     data = await state.get_data()
     old_word = data.get("old_word").word
-    change = await change_restrict_word(session, old_word=old_word, new_word=new_word)
+    change = await change_restrict_word(
+        session, old_word=old_word, new_word=new_word
+    )
     if change:
-        await message.answer(f'Слово "{old_word}" успешно заменено на "{new_word}".')
+        await message.answer(
+            f'Слово "{old_word}" успешно заменено на "{new_word}".'
+        )
         await state.clear()
         await start_cmd(message, state, session)
     else:
@@ -174,13 +199,15 @@ async def delete_word_cmd(
         return
     try:
         await orm_del_word_obj(session, word_obj)
+        dbase.storage.restricted_words.discard(word)
         await message.answer(f'Слово "{word}" успешно удалено.')
     except Exception as e:
         await message.answer(f"При удалении возникла ошибка.")
         logger.error(f"При удалении слова {word} возникла ошибка: {e}")
     await state.clear()
     logger.info(
-        f"Успешное удаление слова {word} " f"админом {message.from_user.username}"
+        f"Успешное удаление слова {word} "
+        f"админом {message.from_user.username}"
     )
     await start_cmd(message, state, session)
 
@@ -192,7 +219,7 @@ async def add_word_cmd(callback: types.CallbackQuery, state: FSMContext):
 
 
 @user_private_admin_router.message(StateFilter(ChangeWords.add_word))
-async def add_word_cmd(
+async def enter_add_word_cmd(
     message: types.Message,
     session: AsyncSession,
     state: FSMContext,
@@ -208,13 +235,13 @@ async def add_word_cmd(
         return
     try:
         await orm_add_word(session, word)
+        dbase.storage.restricted_words.add(word)
         await message.answer(f'Слово "{word}" успешно добавлено.')
     except:
         await message.answer(f'Ошибка добавления слова "{word}"')
     finally:
         await state.clear()
         await start_cmd(message, state, session)
-
 
 
 async def generate_excel_in_memory_words(
@@ -249,41 +276,61 @@ async def get_word_cmd(callback: types.CallbackQuery, session: AsyncSession):
     await callback.answer()
     virtual_workbook = await generate_excel_in_memory_words(session)
     filename = (
-        "Запрещенные слова " f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+        "Запрещенные слова "
+        f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     )
-    document = BufferedInputFile(file=virtual_workbook.getvalue(), filename=filename)
+    document = BufferedInputFile(
+        file=virtual_workbook.getvalue(), filename=filename
+    )
     await callback.bot.send_document(
         chat_id=callback.message.chat.id,
         document=document,
         caption="Список запрещённых слов готов!",
     )
 
+
 #################### Блокировка Юзера ##################
+@user_private_admin_router.callback_query(F.data.startswith("del_block_"))
+async def del_block_user_cmd(
+    callback: types.CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+):
+    await callback.answer()
+    block_id = int(callback.data.split("_")[1])
+    await remove_block_user_id(session, block_id)
+    await callback.message.answer("Блокировка отменена.")
+    await start_cmd(message=callback.message, state=state, session=session)
 
 
 @user_private_admin_router.callback_query(F.data.startswith("block_"))
-async def block_user_cmd(callback: types.CallbackQuery,
-                         bot: Bot,
-                         state: FSMContext,
-                         session: AsyncSession):
+async def block_user_cmd(
+    callback: types.CallbackQuery,
+    bot: Bot,
+    state: FSMContext,
+    session: AsyncSession,
+):
     await callback.answer()
-    block_id = int(callback.data.split('_')[1])
+    block_id = int(callback.data.split("_")[1])
     block_obj = await get_block_obj(session, block_id)
     if not block_obj:
-        text  = f'Запись блокировки {block_id} не обнаружена'
+        text = f"Запись блокировки {block_id} не обнаружена"
         logger.error(text)
-        await callback.answer('Блокировка не удалась. Запись не обнаружена.')
+        await callback.answer("Блокировка не удалась. Запись не обнаружена.")
         await start_cmd(message=callback.message, state=state, session=session)
 
     user_id = block_obj.user_tele_id
     chat_id = block_obj.chat_id
-    block_time = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 86400  # +24h
+    block_time = (
+        int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 86400
+    )  # +24h
 
     try:
         result = await bot(
-            BanChatMember(chat_id=chat_id,
-                          user_id=user_id,
-                          until_date=block_time)
+            BanChatMember(
+                chat_id=chat_id, user_id=user_id, until_date=block_time
+            )
         )
 
         if result:
@@ -300,24 +347,28 @@ async def block_user_cmd(callback: types.CallbackQuery,
             f"Ошибка блокировки: {e} чат:{block_obj.chat_id}, user:{block_obj.user_tele_id}"
         )
 
-    block_datetime = datetime.datetime.fromtimestamp(block_time,
-                                                     tz=datetime.timezone.utc)
+    block_datetime = datetime.datetime.fromtimestamp(
+        block_time, tz=datetime.timezone.utc
+    )
 
     await set_block(
         session=session,
         id_block=block_id,
         set_bool=True,
-        unblock_time=block_datetime
+        unblock_time=block_datetime,
     )
     await start_cmd(message=callback.message, state=state, session=session)
 
 
-
 @user_private_admin_router.callback_query(F.data == "confirm_user")
-async def confirm_user_cmd(callback: types.CallbackQuery, session: AsyncSession):
+async def confirm_user_cmd(
+    callback: types.CallbackQuery, session: AsyncSession
+):
     user = await orm_get_unconfirmed_user_last(session)
     if not user:
-        await callback.answer("Нет неподтверждённых пользователей.", show_alert=True)
+        await callback.answer(
+            "Нет неподтверждённых пользователей.", show_alert=True
+        )
         return
     user_info = (
         f"👤 <b>Имя:</b> {user.name}\n"
@@ -342,44 +393,58 @@ async def confirm_user_cmd(callback: types.CallbackQuery, session: AsyncSession)
 
 @user_private_admin_router.callback_query(F.data.startswith("conf_user"))
 async def conf_user_cmd(
-    callback: types.CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext
+    callback: types.CallbackQuery,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
 ):
     await callback.answer()
     tele_id = int(callback.data.split("_")[-1])
-    logger.info(f'confirm {tele_id}')
+    logger.info(f"confirm {tele_id}")
     user = await orm_get_user_tele(session, tele_id)
     user.confirmed = True
     await session.commit()
     await bot.send_message(
-        chat_id=user.tele_id, text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}."
+        chat_id=user.tele_id,
+        text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}.",
     )
     await callback.message.edit_text(
-        f"Пользователь {user.name} - кв {user.apartment} подтвержден.")
+        f"Пользователь {user.name} - кв {user.apartment} подтвержден."
+    )
     await start_cmd(callback.message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data.startswith("del_user"))
-async def del_user_cmd(callback: types.CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext ):
+async def del_user_cmd(
+    callback: types.CallbackQuery,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
+):
     await callback.answer()
     tele_id = int(callback.data.split("_")[-1])
     user = await orm_get_user_tele(session, tele_id)
     if user:
-        id_block = await post_block_user(session,
-                                         user_tele_id=user.tele_id,
-                                         ban_admin_tele_id=callback.from_user.id,
-                                         chat_id=callback.message.chat.id,  # протянуть номер группового чата
-                                         name_admin=callback.from_user.username,
-                                         reason='delete user from admin',
-                                         unblock_time=None)
+        id_block = await post_block_user(
+            session,
+            user_tele_id=user.tele_id,
+            ban_admin_tele_id=callback.from_user.id,
+            chat_id=callback.message.chat.id,  # протянуть номер группового чата
+            name_admin=callback.from_user.username,
+            reason="delete user from admin",
+            unblock_time=None,
+        )
         await set_block(session, id_block, True, None)
         await orm_del_user(session, user.tele_id)
         await callback.message.edit_text(
-            f"Пользователь {user.name} - кв {user.apartment} удалён." )
+            f"Пользователь {user.name} - кв {user.apartment} удалён."
+        )
         await bot.send_message(
             chat_id=user.tele_id,
             text=(
                 f"❌ Вы не прошли проверку, {user.name}. Похоже Вы не из наших."
-                "\nПрощайте." ),
+                "\nПрощайте."
+            ),
         )
 
     else:
@@ -388,7 +453,9 @@ async def del_user_cmd(callback: types.CallbackQuery, session: AsyncSession, bot
 
 
 @user_private_admin_router.callback_query(F.data == "edit_meter")
-async def edit_meter_cmd(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
+async def edit_meter_cmd(
+    callback: types.CallbackQuery, bot: Bot, state: FSMContext
+):
     user_tele_id = callback.from_user.id
     await bot.send_message(user_tele_id, text="Введите номер квартиры")
     await state.set_state(ChangeMeter.apartment)
@@ -396,7 +463,9 @@ async def edit_meter_cmd(callback: types.CallbackQuery, bot: Bot, state: FSMCont
 
 
 @user_private_admin_router.callback_query(F.data.startswith("msg_porch"))
-async def msg_porch_cmd(callback: types.CallbackQuery, bot: Bot, state: FSMContext):
+async def msg_porch_cmd(
+    callback: types.CallbackQuery, bot: Bot, state: FSMContext
+):
     user_tele_id = callback.from_user.id
     await bot.send_message(user_tele_id, text="Введите номер подъезда")
     await state.set_state(PorchMessage.porch)
@@ -404,7 +473,9 @@ async def msg_porch_cmd(callback: types.CallbackQuery, bot: Bot, state: FSMConte
 
 
 @user_private_admin_router.message(ChangeMeter.apartment, F.text)
-async def input_apart(message: types.Message, session: AsyncSession, state: FSMContext):
+async def input_apart(
+    message: types.Message, session: AsyncSession, state: FSMContext
+):
     if await validate_apart(message):
         user = await orm_get_user_apartment(session, message.text)
         if user is None:
@@ -415,7 +486,9 @@ async def input_apart(message: types.Message, session: AsyncSession, state: FSMC
         await state.update_data(apartment=message.text)
         meter = await orm_get_user_meters_last(session, user.tele_id)
         user_info = f"Текущие показания кв {user.apartment}:\n"
-        last_meter_data = await orm_get_user_meters_last(session, user_id=user.tele_id)
+        last_meter_data = await orm_get_user_meters_last(
+            session, user_id=user.tele_id
+        )
         if meter:
             user_info += (
                 f"🚰 <b>Счётчики горячей воды:</b> кухня - "
@@ -453,7 +526,10 @@ async def input_text(message: types.Message, state: FSMContext):
 
 @user_private_admin_router.callback_query(PorchMessage.confirm)
 async def send_msg_porch(
-    callback: types.CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext
+    callback: types.CallbackQuery,
+    session: AsyncSession,
+    bot: Bot,
+    state: FSMContext,
 ):
     if callback.data == "yes":
         data = await state.get_data()
@@ -490,12 +566,14 @@ async def get_meter_all_cmd(
         try:
             await bot.send_message(
                 user.tele_id,
-                "Здравствуйте.\nПрошу Вас передать " "показания приборов учёта.",
+                "Здравствуйте.\nПрошу Вас передать "
+                "показания приборов учёта.",
                 reply_markup=get_user_main_btns(btns),
             )
         except TelegramForbiddenError:
             print(
-                f"Пользователь {user.tele_id} - " f"{user.apartment} заблокировал бота"
+                f"Пользователь {user.tele_id} - "
+                f"{user.apartment} заблокировал бота"
             )
             await orm_del_user(session, user.tele_id)
             txt = (
@@ -520,7 +598,10 @@ async def get_data_apart_cmd(
 
 
 async def show_meter_info(
-    message: types.Message, session: AsyncSession, state: FSMContext, apartment: str
+    message: types.Message,
+    session: AsyncSession,
+    state: FSMContext,
+    apartment: str,
 ):
     user = await orm_get_user_apartment(session, apartment)
     if user is None:
@@ -560,7 +641,6 @@ async def send_info_apart(
 
     await show_meter_info(message, session, state, message.text)
 
-# TODO callback-и электричества post_power
 
 async def generate_excel_in_memory(
     session: AsyncSession,
@@ -589,7 +669,11 @@ async def generate_excel_in_memory(
                 meter.water_cold_bath or 0,
                 meter.water_hot_kitchen or 0,
                 meter.water_cold_kitchen or 0,
-                meter.created.strftime("%Y-%m-%d %H:%M") if meter.created else "",
+                (
+                    meter.created.strftime("%Y-%m-%d %H:%M")
+                    if meter.created
+                    else ""
+                ),
             ]
         )
 
@@ -630,7 +714,11 @@ async def generate_excel_energy_in_memory(
                 energy.t0 or 0,
                 energy.t1 or 0,
                 energy.t2 or 0,
-                energy.created.strftime("%Y-%m-%d %H:%M") if energy.created else "",
+                (
+                    energy.created.strftime("%Y-%m-%d %H:%M")
+                    if energy.created
+                    else ""
+                ),
             ]
         )
 
@@ -657,11 +745,16 @@ async def get_meter_month(
     await callback.answer()
     virtual_workbook = await generate_excel_in_memory(session)
     filename = (
-        f"Счетчики воды на " f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+        f"Счетчики воды на "
+        f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     )
-    document = BufferedInputFile(file=virtual_workbook.getvalue(), filename=filename)
+    document = BufferedInputFile(
+        file=virtual_workbook.getvalue(), filename=filename
+    )
     await bot.send_document(
-        chat_id=callback.message.chat.id, document=document, caption="Ваш отчёт готов!"
+        chat_id=callback.message.chat.id,
+        document=document,
+        caption="Ваш отчёт готов!",
     )
 
 
@@ -674,23 +767,27 @@ async def get_power_month(
     await callback.answer()
     virtual_workbook = await generate_excel_energy_in_memory(session)
     filename = (
-        f"Счетчики электричества на " f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+        f"Счетчики электричества на "
+        f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     )
-    document = BufferedInputFile(file=virtual_workbook.getvalue(), filename=filename)
+    document = BufferedInputFile(
+        file=virtual_workbook.getvalue(), filename=filename
+    )
     await bot.send_document(
-        chat_id=callback.message.chat.id, document=document, caption="Ваш отчёт готов!"
+        chat_id=callback.message.chat.id,
+        document=document,
+        caption="Ваш отчёт готов!",
     )
     await start_cmd(message=callback.message, state=None, session=session)
 
 
 @user_private_admin_router.callback_query(F.data == "post_power")
-async def get_data_apart_cmd(
+async def post_power_cmd(
     callback: types.CallbackQuery, bot: Bot, state: FSMContext
 ):
     await bot.send_message(callback.from_user.id, "Введите номер квартиры")
     await callback.answer()
     await state.set_state(GetPower.apartment)
-
 
 
 @user_private_admin_router.message(StateFilter(GetPower))
@@ -704,7 +801,7 @@ async def input_t_power_cmd(
         await message.answer("Должно быть число. Введите заново.")
         return
     data = await state.get_data()
-    apartment = data.get('apartment')
+    apartment = data.get("apartment")
     current_state = await state.get_state()
     if current_state == GetPower.apartment:
         if 0 < int(t) <= APARTMENTCOUNT:
@@ -712,39 +809,41 @@ async def input_t_power_cmd(
             await state.set_state(GetPower.t0)
             await message.answer(f"{t} кв: Введите показания Т0")
         else:
-            await message.answer(f"В доме {APARTMENTCOUNT} квартир. Введите номер существующей квартиры.")
-    elif  current_state == GetPower.t0:
+            await message.answer(
+                f"В доме {APARTMENTCOUNT} квартир. Введите номер существующей квартиры."
+            )
+    elif current_state == GetPower.t0:
         await state.update_data(t0=int(t))
         await state.set_state(GetPower.t1)
         await message.answer(f"{apartment} кв: Введите показания Т1")
-    elif  current_state == GetPower.t1:
+    elif current_state == GetPower.t1:
         await state.update_data(t1=int(t))
         await state.set_state(GetPower.t2)
         await message.answer(f"{apartment} кв: Введите показания Т2")
-    elif  current_state == GetPower.t2:
+    elif current_state == GetPower.t2:
         await state.update_data(t2=int(t))
         data = await state.get_data()
-        apartment = data.get('apartment')
+        apartment = data.get("apartment")
         result = await orm_add_update_power(session, **data)
         if result:
-            await message.answer(f"Показания {apartment} кв сохранены успешно. \nТ0 - {data.get('t0')}\nТ1 - {data.get('t1')}\nТ2 - {data.get('t2')}")
+            await message.answer(
+                f"Показания {apartment} кв сохранены успешно. \nТ0 - {data.get('t0')}\nТ1 - {data.get('t1')}\nТ2 - {data.get('t2')}"
+            )
         else:
-            await message.answer('Что-то пошло не так. Данные не сохранились.')
+            await message.answer("Что-то пошло не так. Данные не сохранились.")
         await state.clear()
         await state.update_data(apartment=apartment)
         await state.set_state(GetPower.next_ap)
-        await message.answer( "Следующее списание?", reply_markup=get_user_main_btns(btns_yes_no))
-
+        await message.answer(
+            "Следующее списание?", reply_markup=get_user_main_btns(btns_yes_no)
+        )
 
 
 @user_private_admin_router.callback_query(GetPower.next_ap)
-async def next_apartment(
-        callback: types.CallbackQuery,
-        state: FSMContext
-):
+async def next_apartment(callback: types.CallbackQuery, state: FSMContext):
     if callback.data == "yes":
         data = await state.get_data()
-        apartment = data.get('apartment')
+        apartment = data.get("apartment")
         if apartment and apartment < APARTMENTCOUNT:
             apartment += 1
         await state.update_data(apartment=apartment)
@@ -757,14 +856,14 @@ async def next_apartment(
         await callback.message.answer("Готово!")
         await state.clear()
 
-    print('apartment==', apartment)
+    print("apartment==", apartment)
 
 
 @user_private_admin_router.callback_query(F.data)
 async def set_meter_cmd(
-        callback_query: types.CallbackQuery,
-        session: AsyncSession,
-        state: FSMContext
+    callback_query: types.CallbackQuery,
+    session: AsyncSession,
+    state: FSMContext,
 ):
 
     action = callback_query.data
@@ -856,7 +955,9 @@ async def save_meter_cmd(
         return
 
     # Валидация
-    validate = await validate_data_meter(message, state, message.text, meter_value)
+    validate = await validate_data_meter(
+        message, state, message.text, meter_value
+    )
     if not validate:
         return
 
