@@ -1,2 +1,3 @@
 APARTMENTCOUNT: int = 386
 PORCH_APART = {1: (1, 84), 2: (85, 168), 3: (169, 218), 4: (219, 302), 5: (303, 386)}
+NUMBER_TSJ = 301

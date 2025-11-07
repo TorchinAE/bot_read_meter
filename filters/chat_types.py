@@ -28,5 +28,5 @@ class IsConfirmedUser(Filter):
     async def __call__(
         self, message: types.Message, bot: Bot, session: AsyncSession
     ) -> bool:
-        user_id = message.from_user.id
-        return await orm_get_confirmed(session, user_id)
+        user_tele_id = message.from_user.id
+        return await orm_get_confirmed(session, user_tele_id)

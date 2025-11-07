@@ -6,7 +6,8 @@ from aiogram import Bot, F, Router, types
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError
 from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
-from aiogram.types import BufferedInputFile, CallbackQuery, ChatPermissions
+from aiogram.methods import BanChatMember
+from aiogram.types import BufferedInputFile
 from openpyxl import Workbook
 from openpyxl.styles import Alignment
 from openpyxl.utils import get_column_letter
@@ -26,7 +27,8 @@ from dbase.orm_query import (
     orm_get_users_confirm,
     orm_get_users_to_apart,
     orm_get_word_obj,
-    orm_get_words,
+    orm_get_words, get_block_obj, set_block, post_block_user,
+    orm_get_count_need_confirmed,
 )
 from filters.chat_types import ChatTypeFilter, IsAdmin
 from filters.data_filter import validate_apart, validate_data_meter, validate_porch
@@ -49,12 +51,12 @@ user_private_admin_router.callback_query.filter(IsAdmin())
 
 
 @user_private_admin_router.message(Command("menu"))
-async def nemu_cmd(message: types.Message, state: FSMContext):
-    await start_cmd(message, state)
+async def nemu_cmd(message: types.Message, state: FSMContext, session:AsyncSession):
+    await start_cmd(message, state, session)
 
 
 @user_private_admin_router.message(Command("about"))
-async def about_cmd(message: types.Message, state: FSMContext):
+async def about_cmd(message: types.Message, state: FSMContext, session:AsyncSession):
     text_mgs = (
         f"Приветствую Вас, {message.from_user.username}!\n"
         "Это бот для жителей дома №6 мкр. Рождественский."
@@ -62,13 +64,16 @@ async def about_cmd(message: types.Message, state: FSMContext):
         "\nДля начала работы отправьте команду /start"
     )
     await message.answer(text_mgs)
-    await start_cmd(message, state)
+    await start_cmd(message, state, session)
 
 
 @user_private_admin_router.message(CommandStart())
-async def start_cmd(message: types.Message, state: FSMContext):
+async def start_cmd(message: types.Message, state: FSMContext, session: AsyncSession):
     await state.clear()
     text_mgs = "Добро пожаловать , Администратор"
+    n_count = await orm_get_count_need_confirmed(session)
+    if n_count > 0:
+        text_mgs += f"\nНеобходимо подтвердить {n_count} пользователей."
     await message.answer(text_mgs, reply_markup=get_user_main_btns(btns_admin))
 
 
@@ -76,12 +81,13 @@ async def start_cmd(message: types.Message, state: FSMContext):
 async def cancel_cmd(
     callback: types.CallbackQuery,
     state: FSMContext,
+    session: AsyncSession
 ):
     await callback.answer()
     await callback.bot.delete_message(
         chat_id=callback.message.chat.id, message_id=callback.message.message_id
     )
-    await start_cmd(callback.message, state)
+    await start_cmd(callback.message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data == "restrict_words")
@@ -136,7 +142,7 @@ async def input_word_cmd(
     if change:
         await message.answer(f'Слово "{old_word}" успешно заменено на "{new_word}".')
         await state.clear()
-        await start_cmd(message, state)
+        await start_cmd(message, state, session)
     else:
         await message.answer("Ошибка замены.")
         logger.error(f"Ошибка замены {change}.")
@@ -174,7 +180,7 @@ async def delete_word_cmd(
     logger.info(
         f"Успешное удаление слова {word} " f"админом {message.from_user.username}"
     )
-    await start_cmd(message, state)
+    await start_cmd(message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data == "add_word")
@@ -205,40 +211,8 @@ async def add_word_cmd(
         await message.answer(f'Ошибка добавления слова "{word}"')
     finally:
         await state.clear()
-        await start_cmd(message, state)
+        await start_cmd(message, state, session)
 
-
-#################### удаление изменение запрещённых слов меню  ##################
-
-
-@user_private_admin_router.callback_query(F.data.startswith("block_user_"))
-async def block_user_cmd(callback: types.CallbackQuery, bot: Bot):
-    await callback.answer()
-    data_callback = callback.data.split("_")
-    block_user_id = data_callback[-2]
-    block_chat_id = data_callback[-1]
-    try:
-        await bot.restrict_chat_member(
-            chat_id=int(block_chat_id),
-            user_id=int(block_user_id),
-            permissions=ChatPermissions(can_send_messages=False),
-        )
-        await callback.answer(
-            "Пользователю заблокирована отправка сообщений в чате! Не удален!",
-            show_alert=True,
-        )
-        await callback.message.edit_text(
-            callback.message.text + "\n\n✅ Пользователь успешно ограничен."
-        )
-
-    except Exception as e:
-        await callback.message.edit_text(
-            f"Ошибка: блокировки\n Сообщите разработчику\nчат:{block_chat_id}, user:{block_user_id}",
-            show_alert=True,
-        )
-        logger.error(
-            f"Ошибка блокировки: {e} чат:{block_chat_id}, user:{block_user_id}"
-        )
 
 
 async def generate_excel_in_memory_words(
@@ -282,6 +256,60 @@ async def get_word_cmd(callback: types.CallbackQuery, session: AsyncSession):
         caption="Список запрещённых слов готов!",
     )
 
+#################### Блокировка Юзера ##################
+
+
+@user_private_admin_router.callback_query(F.data.startswith("block_"))
+async def block_user_cmd(callback: types.CallbackQuery,
+                         bot: Bot,
+                         state: FSMContext,
+                         session: AsyncSession):
+    await callback.answer()
+    block_id = int(callback.data.split('_')[1])
+    block_obj = await get_block_obj(session, block_id)
+    if not block_obj:
+        text  = f'Запись блокировки {block_id} не обнаружена'
+        logger.error(text)
+        await callback.answer('Блокировка не удалась. Запись не обнаружена.')
+        await start_cmd(message=callback.message, state=state, session=session)
+
+    user_id = block_obj.user_tele_id
+    chat_id = block_obj.chat_id
+    block_time = int(datetime.datetime.now(datetime.timezone.utc).timestamp()) + 86400  # +24h
+
+    try:
+        result = await bot(
+            BanChatMember(chat_id=chat_id,
+                          user_id=user_id,
+                          until_date=block_time)
+        )
+
+        if result:
+            await callback.message.edit_text(
+                callback.message.text + "\n\n✅ Пользователь успешно ограничен."
+            )
+
+    except Exception as e:
+        await callback.message.edit_text(
+            f"Ошибка: блокировки\n Сообщите разработчику\nчат:{block_obj.chat_id}, user:{block_obj.user_tele_id}",
+            show_alert=True,
+        )
+        logger.error(
+            f"Ошибка блокировки: {e} чат:{block_obj.chat_id}, user:{block_obj.user_tele_id}"
+        )
+
+    block_datetime = datetime.datetime.fromtimestamp(block_time,
+                                                     tz=datetime.timezone.utc)
+
+    await set_block(
+        session=session,
+        id_block=block_id,
+        set_bool=True,
+        unblock_time=block_datetime
+    )
+    await start_cmd(message=callback.message, state=state, session=session)
+
+
 
 @user_private_admin_router.callback_query(F.data == "confirm_user")
 async def confirm_user_cmd(callback: types.CallbackQuery, session: AsyncSession):
@@ -314,34 +342,47 @@ async def confirm_user_cmd(callback: types.CallbackQuery, session: AsyncSession)
 async def conf_user_cmd(
     callback: types.CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext
 ):
+    await callback.answer()
     tele_id = int(callback.data.split("_")[-1])
+    logger.info(f'confirm {tele_id}')
     user = await orm_get_user_tele(session, tele_id)
     user.confirmed = True
     await session.commit()
     await bot.send_message(
         chat_id=user.tele_id, text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}."
     )
-    await callback.answer(
-        f"Пользователь {user.name} - кв {user.apartment} подтвержден.", show_alert=True
-    )
-    await start_cmd(callback.message, state)
+    await callback.message.edit_text(
+        f"Пользователь {user.name} - кв {user.apartment} подтвержден.")
+    await start_cmd(callback.message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data.startswith("del_user"))
-async def del_user_cmd(callback: types.CallbackQuery, session: AsyncSession, bot: Bot):
+async def del_user_cmd(callback: types.CallbackQuery, session: AsyncSession, bot: Bot, state: FSMContext ):
+    await callback.answer()
     tele_id = int(callback.data.split("_")[-1])
     user = await orm_get_user_tele(session, tele_id)
-    await orm_del_user(session, user.tele_id)
-    await callback.answer(
-        f"Пользователь {user.name} - кв {user.apartment} удалён.", show_alert=True
-    )
-    await bot.send_message(
-        chat_id=user.tele_id,
-        text=(
-            f"❌ Вы не прошли проверку, {user.name}. Похоже Вы не из наших."
-            "\nПрощайте."
-        ),
-    )
+    if user:
+        id_block = await post_block_user(session,
+                                         user_tele_id=user.tele_id,
+                                         ban_admin_tele_id=callback.from_user.id,
+                                         chat_id=callback.message.chat.id,  # протянуть номер группового чата
+                                         name_admin=callback.from_user.username,
+                                         reason='delete user from admin',
+                                         unblock_time=None)
+        await set_block(session, id_block, True, None)
+        await orm_del_user(session, user.tele_id)
+        await callback.message.edit_text(
+            f"Пользователь {user.name} - кв {user.apartment} удалён." )
+        await bot.send_message(
+            chat_id=user.tele_id,
+            text=(
+                f"❌ Вы не прошли проверку, {user.name}. Похоже Вы не из наших."
+                "\nПрощайте." ),
+        )
+
+    else:
+        await callback.answer(f"Пользователь {tele_id} не найден")
+    await start_cmd(callback.message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data == "edit_meter")
@@ -366,7 +407,7 @@ async def input_apart(message: types.Message, session: AsyncSession, state: FSMC
         user = await orm_get_user_apartment(session, message.text)
         if user is None:
             await message.answer("Квартира не найдена")
-            await start_cmd(message, state)
+            await start_cmd(message, state, session)
             return
 
         await state.update_data(apartment=message.text)
@@ -435,7 +476,7 @@ async def send_msg_porch(
     elif callback.data == "cancel":
         await state.clear()
         await callback.answer("Отправка отменена", show_alert=True)
-    await start_cmd(callback.message, state)
+    await start_cmd(callback.message, state, session)
 
 
 @user_private_admin_router.callback_query(F.data.startswith("get_meter_all"))
@@ -482,7 +523,7 @@ async def show_meter_info(
     user = await orm_get_user_apartment(session, apartment)
     if user is None:
         await message.answer("Квартира не найдена")
-        await start_cmd(message, state)
+        await start_cmd(message, state, session)
         return
 
     await state.update_data(apartment=apartment)  # Обновляем состояние
@@ -582,7 +623,9 @@ async def get_meter_month(
 
 @user_private_admin_router.callback_query(F.data)
 async def set_meter_cmd(
-    callback_query: types.CallbackQuery, session: AsyncSession, state: FSMContext
+        callback_query: types.CallbackQuery,
+        session: AsyncSession,
+        state: FSMContext
 ):
 
     action = callback_query.data
@@ -622,7 +665,7 @@ async def set_meter_cmd(
         await state.set_state(state_mapping[action])
     except Exception as e:
         logger.error(f"Ошибка {e}")
-        await start_cmd(callback_query.message, state)
+        await start_cmd(callback_query.message, state, session)
     await callback_query.answer()
 
 

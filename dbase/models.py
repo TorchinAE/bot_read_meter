@@ -18,12 +18,34 @@ class User(Base):
     apartment: Mapped[int] = mapped_column(Integer, nullable=True)
     phone: Mapped[str] = mapped_column(String(13), nullable=True, unique=True)
     confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    admin: Mapped[bool] = mapped_column(Boolean, default=False)
     meters: Mapped[list["Meter"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
     ban_records: Mapped[list["BanUsers"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
+    power: Mapped[list["Power"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class Power(Base):
+    __tablename__ = 'power'
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
+    user: Mapped["User"] = relationship(back_populates='power')
+    t0: Mapped[int] = mapped_column(Integer, nullable=True)
+    t1: Mapped[int] = mapped_column(Integer, nullable=True)
+    t2: Mapped[int] = mapped_column(Integer, nullable=True)
+
+    def __repr__(self):
+        return (
+            f'{self.user.apartment} кв: T0 - {self.t0}, '
+            f'T1 - {self.t1}, T2 - {self.t2}'
+        )
 
 
 class Meter(Base):
@@ -35,7 +57,7 @@ class Meter(Base):
     water_hot_kitchen: Mapped[int] = mapped_column(Integer, nullable=True)
     water_cold_kitchen: Mapped[int] = mapped_column(Integer, nullable=True)
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("user.tele_id", ondelete="CASCADE"), nullable=False
+        ForeignKey("user.id", ondelete="CASCADE"), nullable=False
     )
     user: Mapped["User"] = relationship(back_populates="meters")
 
@@ -61,12 +83,14 @@ class BanUsers(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_tele_id: Mapped[int] = mapped_column(
         BigInteger,
-        ForeignKey("user.tele_id", ondelete="CASCADE"),
+        ForeignKey("user.id", ondelete="CASCADE"),
         nullable=False,
         index=True,
     )
-    ban_admin_tele_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
-    name_admin: Mapped[str] = mapped_column(String(64), nullable=False)
+    ban_admin_tele_id: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    name_admin: Mapped[str] = mapped_column(String(64), nullable=True)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     reason: Mapped[str] = mapped_column(String(255), nullable=False)
     unblock_time: Mapped[DateTime] = mapped_column(DateTime, nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean, nullable=True, default=False)
     user: Mapped["User"] = relationship(back_populates="ban_records")

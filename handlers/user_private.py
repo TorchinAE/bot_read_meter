@@ -1,4 +1,4 @@
-from aiogram import F, Router, types
+from aiogram import F, Router, types, Bot
 from aiogram.filters import Command, CommandStart
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,7 +118,10 @@ async def add_apartment(
 
 
 @user_private_router.message(AddUser.phone, F.text)
-async def add_phone(message: types.Message, state: FSMContext, session: AsyncSession):
+async def add_phone(message: types.Message,
+                    state: FSMContext,
+                    session: AsyncSession,
+                    bot:Bot):
     user = await orm_get_user_tele(session=session, tele_id=message.from_user.id)
     if message.text == "." and user:
         await state.update_data(phone=user.phone)
@@ -137,9 +140,13 @@ async def add_phone(message: types.Message, state: FSMContext, session: AsyncSes
     data = await state.get_data()
     await orm_add_user(session=session, tele_id=message.from_user.id, **data)
     await message.answer(
-        "Спасибо, данные добавлены. Обратитесь "
-        "к Администратору для подтверждения данных",
+        "Спасибо, данные добавлены. Скоро "
+        "Администратор проверит Ваши данные",
         reply_markup=types.ReplyKeyboardRemove(),
+    )
+    await bot.send_message(
+        chat_id=user.tele_id,
+        text=f"✅ Вас подтвердили! Добро пожаловать, {user.name}."
     )
     await state.clear()
 

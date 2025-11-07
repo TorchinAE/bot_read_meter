@@ -1,14 +1,18 @@
 import logging
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence, Union, Any, Coroutine
 
-from sqlalchemy import delete, desc, extract, func, insert, select
-from sqlalchemy.exc import IntegrityError
+from aiogram import Bot
+from aiogram.types import DateTime
+from sqlalchemy import delete, desc, extract, func, insert, select, update
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+
 from common.test_users import test_users
-from dbase.models import Meter, User, Words
+from dbase.models import Meter, User, Words, BanUsers, BanUsers
+from handlers.const import NUMBER_TSJ
 
 logger = logging.getLogger(__name__)
 
@@ -41,12 +45,12 @@ async def create_restrict_words_db(
     words = result.scalars().first()
     if words:
         return
-    restrict_words = []
+    restrict_words = set()
     with open("ban_words.txt", "r", encoding="utf-8") as f:
         for line in f:
-            word = line.strip()
+            word = line.strip().lower()
             if word:
-                restrict_words.append(word)
+                restrict_words.add(word)
     words_to_add = [Words(word=word) for word in restrict_words]
     session.add_all(words_to_add)
     await session.commit()
@@ -135,6 +139,46 @@ async def orm_get_users_confirm(session: AsyncSession) -> Sequence[User]:
     return users
 
 
+async def orm_add_admins(session: AsyncSession,
+                         admin_tele_ids: list[int],
+                         chat_id,
+                         bot:Bot) -> None:
+
+    query = select(User).where(User.tele_id.in_(admin_tele_ids))
+    result = await session.execute(query)
+    existing_users_list = result.scalars().all()
+    existing_users = {user.tele_id: user for user in existing_users_list}
+    existing_users_set = set(existing_users.keys())
+    admin_to_del = existing_users_set - set(admin_tele_ids)
+    admin_to_add = set(admin_tele_ids) - existing_users_set
+
+    for tele_id in admin_tele_ids:
+        if tele_id in existing_users_set:
+            existing_users[tele_id].admin = True
+
+    for admin in existing_users_list:
+        if admin.tele_id in admin_to_del:
+            admin.admin = False
+    for user in admin_to_add:
+        chat_member = await bot.get_chat_member(chat_id, user)
+        full_name = chat_member.user.full_name or f"Admin {user}"
+        session.add(
+            User(
+                tele_id=user,
+                name=full_name,
+                apartment=NUMBER_TSJ,
+                confirmed=True,
+                admin=True,
+            )
+        )
+    await session.commit()
+
+async def orm_get_admin_list(session:AsyncSession) -> Sequence[User]:
+    query = select(User).where(User.admin.is_(True))
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
 async def orm_get_users_to_apart(
     session: AsyncSession, start_apart: int, fnsh_apart: int
 ) -> list[User]:
@@ -169,8 +213,14 @@ async def orm_get_user_apartment(session: AsyncSession, apartment: str) -> User:
     return user
 
 
-async def orm_get_confirmed(session: AsyncSession, user_id: int) -> bool:
-    user = await orm_get_user_tele(session, user_id)
+async def orm_get_count_need_confirmed(session:AsyncSession) -> int:
+    query = select(func.count(User.id)).where(User.confirmed.is_(False))
+    result = await session.execute(query)
+    return result.scalar_one()
+
+
+async def orm_get_confirmed(session: AsyncSession, user_tele_id: int) -> bool:
+    user = await orm_get_user_tele(session, user_tele_id)
     if user is None:
         return False
     return user.confirmed
@@ -221,7 +271,69 @@ async def orm_add_update_meter(
         meter.water_cold_kitchen = water_cold_kitchen or meter.water_cold_kitchen
     await session.commit()
 
+async def post_block_user (session: AsyncSession,
+                           user_tele_id: int,
+                           ban_admin_tele_id: int,
+                           chat_id:int,
+                           name_admin: str,
+                           reason: str,
+                           unblock_time: DateTime
+                           ) -> int:
+    try:
+        ban = BanUsers(
+            user_tele_id=user_tele_id,
+            ban_admin_tele_id=ban_admin_tele_id,
+            chat_id=chat_id,
+            name_admin=name_admin,
+            reason=reason[:255],  # защита от переполнения
+            unblock_time=unblock_time,
+        )
+        session.add(ban)
+        await session.commit()
+        return ban.id
+    except SQLAlchemyError as e:
+        await session.rollback()
+        logger.error("SQLAlchemy error in post_block_user: %s", e)
+        raise
+    except Exception as e:
+        await session.rollback()
+        logger.exception("Unexpected error in post_block_user: %s", e)
+        raise
 
+
+
+async def get_block_users(session: AsyncSession)  -> Sequence[BanUsers]:
+    result = await session.execute(
+        select(BanUsers).
+        where(BanUsers.confirmed == True))
+    return result.scalars().all()
+
+
+async def get_block_obj(session: AsyncSession,
+                        id_block:int)  -> Optional[BanUsers]:
+    return await session.get(BanUsers, id_block)
+
+
+async def set_block(session: AsyncSession,
+                    id_block:int,
+                    set_bool:bool,
+                    unblock_time:DateTime) -> None:
+    query = (
+        update(BanUsers)
+        .where(BanUsers.id == id_block)
+        .values(confirmed=set_bool, unblock_time=unblock_time)
+    )
+    result = await session.execute(query)
+    if result.rowcount == 0:
+        raise ValueError(f"BanUsers with id={id_block} not found")
+    await session.commit()
+
+
+async def remove_block_user(session: AsyncSession, user_tele_id: int):
+    await session.execute(delete(BanUsers).where(BanUsers.user_tele_id == user_tele_id))
+    await session.commit()
+
+################# METERS#######################################
 async def orm_get_all_meters_to_month(session: AsyncSession) -> Sequence[Meter]:
     now = datetime.now()
     query = (

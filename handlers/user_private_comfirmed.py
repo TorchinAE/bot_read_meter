@@ -1,4 +1,5 @@
 from datetime import datetime
+from html.parser import HTMLParser
 
 from aiogram import F, Router, types
 from aiogram.filters import Command, CommandStart, StateFilter
@@ -75,12 +76,12 @@ async def all_cmd(
             or data_now.year != last_update_date.year
         ):
             msg += (
-                "\n\nПоказания на текущий месяц не обнаружены. " "Передайте показания"
+                "\n\nПоказания на <b>текущий месяц не обнаружены</b>. Передайте показания"
             )
     else:
-        msg = f'Показания на {data_now.strftime("%d-%m-%y")} не найдены.'
+        msg = f'Показания на {data_now.strftime("%d-%m-%y")} <b>не найдены</b>.'
 
-    await callback_query.message.answer(msg)
+    await callback_query.message.answer(msg, parse_mode="HTML")
     await callback_query.answer()
     await menu_cmd(callback_query.message, state)
 
