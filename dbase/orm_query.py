@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 
 from common.test_users import test_users
-from dbase.models import Meter, User, Words, BanUsers
+from dbase.models import Meter, User, Words, BanUsers, Power
 from handlers.const import NUMBER_TSJ
 
 logger = logging.getLogger(__name__)
@@ -345,6 +345,22 @@ async def orm_get_all_meters_to_month(session: AsyncSession) -> Sequence[Meter]:
             extract("month", Meter.created) == now.month,
         )
         .order_by(User.apartment, desc(Meter.created))
+    )
+    result = await session.execute(query)
+    return result.scalars().all()
+
+
+async def orm_get_all_energy_to_month(session: AsyncSession) -> Sequence[Power]:
+    now = datetime.now()
+    query = (
+        select(Power)
+        .join(User)
+        .options(joinedload(Power.user))
+        .where(
+            extract("year", Power.created) == now.year,
+            extract("month", Power.created) == now.month,
+        )
+        .order_by(User.apartment, desc(Power.created))
     )
     result = await session.execute(query)
     return result.scalars().all()

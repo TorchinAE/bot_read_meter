@@ -28,7 +28,7 @@ from dbase.orm_query import (
     orm_get_users_to_apart,
     orm_get_word_obj,
     orm_get_words, get_block_obj, set_block, post_block_user,
-    orm_get_count_need_confirmed,
+    orm_get_count_need_confirmed, orm_get_all_energy_to_month,
 )
 from filters.chat_types import ChatTypeFilter, IsAdmin
 from filters.data_filter import validate_apart, validate_data_meter, validate_porch
@@ -606,6 +606,48 @@ async def generate_excel_in_memory(
     return virtual_workbook
 
 
+async def generate_excel_energy_in_memory(
+    session: AsyncSession,
+):
+    """Создаёт Excel-файл в памяти"""
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(
+        [
+            "Квартира",
+            "Т0",
+            "Т1",
+            "Т2",
+        ]
+    )
+    electric = await orm_get_all_energy_to_month(session)
+    print(f"Найдено записей: {len(electric)}")
+
+    for i, energy in enumerate(electric):
+        sheet.append(
+            [
+                energy.user.apartment,
+                energy.t0 or 0,
+                energy.t1 or 0,
+                energy.t2 or 0,
+                energy.created.strftime("%Y-%m-%d %H:%M") if energy.created else "",
+            ]
+        )
+
+    for i in range(1, 5):
+        column_letter = get_column_letter(i)
+        length = len(str(sheet[column_letter][0].value))
+        sheet.column_dimensions[column_letter].width = min(length + 3, 50)
+        sheet[column_letter][0].alignment = Alignment(
+            horizontal="center", vertical="center"
+        )
+
+    virtual_workbook = BytesIO()
+    workbook.save(virtual_workbook)
+    virtual_workbook.seek(0)
+    return virtual_workbook
+
+
 @user_private_admin_router.callback_query(F.data == "get_meter_month")
 async def get_meter_month(
     callback: types.CallbackQuery,
@@ -616,6 +658,23 @@ async def get_meter_month(
     virtual_workbook = await generate_excel_in_memory(session)
     filename = (
         f"Счетчики воды на " f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
+    )
+    document = BufferedInputFile(file=virtual_workbook.getvalue(), filename=filename)
+    await bot.send_document(
+        chat_id=callback.message.chat.id, document=document, caption="Ваш отчёт готов!"
+    )
+
+
+@user_private_admin_router.callback_query(F.data == "get_power_month")
+async def get_power_month(
+    callback: types.CallbackQuery,
+    bot: Bot,
+    session: AsyncSession,
+):
+    await callback.answer()
+    virtual_workbook = await generate_excel_energy_in_memory(session)
+    filename = (
+        f"Счетчики электричества на " f"{datetime.datetime.now().strftime('%d-%m-%Y')}.xlsx"
     )
     document = BufferedInputFile(file=virtual_workbook.getvalue(), filename=filename)
     await bot.send_document(
