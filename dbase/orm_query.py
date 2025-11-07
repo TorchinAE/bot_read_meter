@@ -284,36 +284,39 @@ async def orm_add_update_power(
     t0: int,
     t1: int,
     t2: int,
-):
-
-    now = datetime.now()
-    query = (
-        select(Power)
-        .where(
-            Power.apartment == apartment,
-            func.extract("year", Power.created) == now.year,
-            func.extract("month", Power.created) == now.month,
-        )
-        .order_by(desc(Power.created))
-    )
-    result = await session.execute(query)
-    power = result.scalars().first()
-    if power is None:
-        session.add(
-            Power(
-                apartment=apartment,
-                t0=t0,
-                t1=t1,
-                t2=t2,
+) -> bool:
+    try:
+        now = datetime.now()
+        query = (
+            select(Power)
+            .where(
+                Power.apartment == apartment,
+                func.extract("year", Power.created) == now.year,
+                func.extract("month", Power.created) == now.month,
             )
+            .order_by(desc(Power.created))
         )
-    else:
-        power.apartment = apartment
-        power.t0 = t0
-        power.t1 = t1
-        power.t2 = t2
-    await session.commit()
-
+        result = await session.execute(query)
+        power = result.scalars().first()
+        if power is None:
+            session.add(
+                Power(
+                    apartment=apartment,
+                    t0=t0,
+                    t1=t1,
+                    t2=t2,
+                )
+            )
+        else:
+            power.apartment = apartment
+            power.t0 = t0
+            power.t1 = t1
+            power.t2 = t2
+        await session.commit()
+        return True
+    except Exception:
+        await session.rollback()
+        return False
 
 async def post_block_user (session: AsyncSession,
                            user_tele_id: int,
@@ -398,13 +401,11 @@ async def orm_get_all_energy_to_month(session: AsyncSession) -> Sequence[Power]:
     now = datetime.now()
     query = (
         select(Power)
-        .join(User)
-        .options(joinedload(Power.user))
         .where(
             extract("year", Power.created) == now.year,
             extract("month", Power.created) == now.month,
         )
-        .order_by(User.apartment, desc(Power.created))
+        .order_by(Power.apartment, desc(Power.created))
     )
     result = await session.execute(query)
     return result.scalars().all()

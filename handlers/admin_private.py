@@ -619,15 +619,14 @@ async def generate_excel_energy_in_memory(
             "Т0",
             "Т1",
             "Т2",
+            "Дата списания",
         ]
     )
     electric = await orm_get_all_energy_to_month(session)
-    print(f"Найдено записей: {len(electric)}")
-
     for i, energy in enumerate(electric):
         sheet.append(
             [
-                energy.user.apartment,
+                energy.apartment,
                 energy.t0 or 0,
                 energy.t1 or 0,
                 energy.t2 or 0,
@@ -635,7 +634,7 @@ async def generate_excel_energy_in_memory(
             ]
         )
 
-    for i in range(1, 5):
+    for i in range(1, 6):
         column_letter = get_column_letter(i)
         length = len(str(sheet[column_letter][0].value))
         sheet.column_dimensions[column_letter].width = min(length + 3, 50)
@@ -681,6 +680,7 @@ async def get_power_month(
     await bot.send_document(
         chat_id=callback.message.chat.id, document=document, caption="Ваш отчёт готов!"
     )
+    await start_cmd(message=callback.message, state=None, session=session)
 
 
 @user_private_admin_router.callback_query(F.data == "post_power")
@@ -696,35 +696,68 @@ async def get_data_apart_cmd(
 @user_private_admin_router.message(StateFilter(GetPower))
 async def input_t_power_cmd(
     message: types.Message,
-    bot: Bot,
     session: AsyncSession,
     state: FSMContext,
 ):
-    t = message.text.lower()
+    t = message.text
     if not t.isdigit():
         await message.answer("Должно быть число. Введите заново.")
         return
+    data = await state.get_data()
+    apartment = data.get('apartment')
     current_state = await state.get_state()
     if current_state == GetPower.apartment:
         if 0 < int(t) <= APARTMENTCOUNT:
             await state.update_data(apartment=int(t))
             await state.set_state(GetPower.t0)
-            await bot.send_message(message.from_user.id, "Введите показания Т0")
+            await message.answer(f"{t} кв: Введите показания Т0")
         else:
-            await bot.send_message(message.from_user.id, f"В доме {APARTMENTCOUNT} квартир. Введите номер существующей квартиры.")
+            await message.answer(f"В доме {APARTMENTCOUNT} квартир. Введите номер существующей квартиры.")
     elif  current_state == GetPower.t0:
         await state.update_data(t0=int(t))
         await state.set_state(GetPower.t1)
-        await bot.send_message(message.from_user.id, "Введите показания Т1")
+        await message.answer(f"{apartment} кв: Введите показания Т1")
     elif  current_state == GetPower.t1:
         await state.update_data(t1=int(t))
         await state.set_state(GetPower.t2)
-        await bot.send_message(message.from_user.id, "Введите показания Т2")
+        await message.answer(f"{apartment} кв: Введите показания Т2")
     elif  current_state == GetPower.t2:
         await state.update_data(t2=int(t))
         data = await state.get_data()
-        await orm_add_update_power(session, **data)
+        apartment = data.get('apartment')
+        result = await orm_add_update_power(session, **data)
+        if result:
+            await message.answer(f"Показания {apartment} кв сохранены успешно. \nТ0 - {data.get('t0')}\nТ1 - {data.get('t1')}\nТ2 - {data.get('t2')}")
+        else:
+            await message.answer('Что-то пошло не так. Данные не сохранились.')
         await state.clear()
+        await state.update_data(apartment=apartment)
+        await state.set_state(GetPower.next_ap)
+        await message.answer( "Следующее списание?", reply_markup=get_user_main_btns(btns_yes_no))
+
+
+
+@user_private_admin_router.callback_query(GetPower.next_ap)
+async def next_apartment(
+        callback: types.CallbackQuery,
+        state: FSMContext
+):
+    if callback.data == "yes":
+        data = await state.get_data()
+        apartment = data.get('apartment')
+        if apartment and apartment < APARTMENTCOUNT:
+            apartment += 1
+        await state.update_data(apartment=apartment)
+        await state.set_state(GetPower.t0)
+        await callback.answer()
+        await callback.message.answer(f"{apartment} кв: Введите показания Т0")
+
+    elif callback.data == "no":
+        await callback.answer()
+        await callback.message.answer("Готово!")
+        await state.clear()
+
+    print('apartment==', apartment)
 
 
 @user_private_admin_router.callback_query(F.data)
