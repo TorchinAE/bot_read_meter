@@ -14,7 +14,8 @@ load_dotenv()
 from common.bot_cmds_list import private
 from dbase.orm_db import create_db, session_maker
 from handlers.admin_private import user_private_admin_router
-from handlers.user_group import user_group_router, cleanup_expired_bans
+from handlers.user_group import user_group_router, cleanup_expired_bans, \
+    get_admin
 from handlers.user_private import user_private_router
 from handlers.user_private_comfirmed import user_private_confirmed_router
 from middlewares.db import DataBaseSession
@@ -55,7 +56,6 @@ async def main():
         dbase.storage.restricted_words = set(word.lower() for word in words)
 
     asyncio.create_task(cleanup_expired_bans(session_maker, bot, interval=60))
-
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 

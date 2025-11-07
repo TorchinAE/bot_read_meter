@@ -17,7 +17,7 @@ from kbds.kbds import get_user_main_btns
 user_group_router = Router()
 user_group_router.message.filter(ChatTypeFilter(["group", "supergroup"]))
 
-async def cleanup_expired_bans(session_maker, bot: Bot, interval: int = 60):
+async def cleanup_expired_bans(session_maker, bot: Bot, interval: int = 60) -> None:
     while True:
         try:
             async with session_maker() as session:
@@ -35,8 +35,8 @@ async def cleanup_expired_bans(session_maker, bot: Bot, interval: int = 60):
                                     chat_id=ban.user_tele_id,
                                     text="Срок вашей блокировки в чате истёк — вы разблокированы."
                                 )
-                            except Exception:
-                                pass
+                            except Exception as e1:
+                                logger.error(f"Ошибка отправки сообщения заблокированному юзеру: {e1}/ user {ban.user_tele_id}")
         except Exception as e:
             logger.error(f"cleanup_expired_bans error: {e}")
         await asyncio.sleep(interval)
@@ -70,10 +70,6 @@ async def get_admin(message: types.Message, bot: Bot, session: AsyncSession):
 
 
 async def delete_if_blocked(message: types.Message, session: AsyncSession) -> bool:
-    """
-    Проверяет, заблокирован ли автор сообщения.
-    Если заблокирован — удаляет сообщение и возвращает True.
-    """
     try:
         ban_users = await get_block_users(session)
         banned_tele_ids = {ban.user_tele_id for ban in ban_users}

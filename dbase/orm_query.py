@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import Optional, Sequence, Union, Any, Coroutine
+from typing import Optional, Sequence, Union
 
 from aiogram import Bot
 from aiogram.types import DateTime
@@ -11,7 +11,7 @@ from sqlalchemy.orm import joinedload
 
 
 from common.test_users import test_users
-from dbase.models import Meter, User, Words, BanUsers, BanUsers
+from dbase.models import Meter, User, Words, BanUsers
 from handlers.const import NUMBER_TSJ
 
 logger = logging.getLogger(__name__)

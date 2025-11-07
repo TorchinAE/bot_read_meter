@@ -558,6 +558,8 @@ async def send_info_apart(
 
     await show_meter_info(message, session, state, message.text)
 
+# TODO сделать выгрузку в эксель данных по электричеству.
+# TODO callback-и электричества post_power, get_power_month
 
 async def generate_excel_in_memory(
     session: AsyncSession,
