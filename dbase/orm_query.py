@@ -124,6 +124,11 @@ async def orm_add_user(
         user.confirmed = confirmed
     await session.commit()
 
+async def orm_get_user_from_apartment(session: AsyncSession, apartment: int) -> User:
+    query = select(User).where(User.apartment == apartment, User.confirmed.is_(True))
+    result = await session.execute(query)
+    user = result.scalars().first()
+    return user
 
 async def orm_get_user_tele(session: AsyncSession, tele_id: int) -> User:
     query = select(User).where(User.tele_id == tele_id)
@@ -270,6 +275,45 @@ async def orm_add_update_meter(
         meter.water_hot_kitchen = water_hot_kitchen or meter.water_hot_kitchen
         meter.water_cold_kitchen = water_cold_kitchen or meter.water_cold_kitchen
     await session.commit()
+
+
+
+async def orm_add_update_power(
+    session: AsyncSession,
+    apartment: int,
+    t0: int,
+    t1: int,
+    t2: int,
+):
+
+    now = datetime.now()
+    query = (
+        select(Power)
+        .where(
+            Power.apartment == apartment,
+            func.extract("year", Power.created) == now.year,
+            func.extract("month", Power.created) == now.month,
+        )
+        .order_by(desc(Power.created))
+    )
+    result = await session.execute(query)
+    power = result.scalars().first()
+    if power is None:
+        session.add(
+            Power(
+                apartment=apartment,
+                t0=t0,
+                t1=t1,
+                t2=t2,
+            )
+        )
+    else:
+        power.apartment = apartment
+        power.t0 = t0
+        power.t1 = t1
+        power.t2 = t2
+    await session.commit()
+
 
 async def post_block_user (session: AsyncSession,
                            user_tele_id: int,

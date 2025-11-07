@@ -44,3 +44,10 @@ class ChangeWords(StatesGroup):
     edit_word = State()
     delete_word = State()
     add_word = State()
+
+
+class GetPower(StatesGroup):
+    apartment = State()
+    t0 = State()
+    t1 = State()
+    t2 = State()

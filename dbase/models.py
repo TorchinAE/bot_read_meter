@@ -25,25 +25,20 @@ class User(Base):
     ban_records: Mapped[list["BanUsers"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )
-    power: Mapped[list["Power"]] = relationship(
-        back_populates="user", cascade="all, delete-orphan"
-    )
 
 
 class Power(Base):
     __tablename__ = 'power'
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(
-        ForeignKey("user.id", ondelete="CASCADE"), nullable=False)
-    user: Mapped["User"] = relationship(back_populates='power')
+    apartment: Mapped[int] = mapped_column(Integer, nullable=False)
     t0: Mapped[int] = mapped_column(Integer, nullable=True)
     t1: Mapped[int] = mapped_column(Integer, nullable=True)
     t2: Mapped[int] = mapped_column(Integer, nullable=True)
 
     def __repr__(self):
         return (
-            f'{self.user.apartment} кв: T0 - {self.t0}, '
+            f'{self.apartment} кв: T0 - {self.t0}, '
             f'T1 - {self.t1}, T2 - {self.t2}'
         )
 

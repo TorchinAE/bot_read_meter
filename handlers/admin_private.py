@@ -29,11 +29,13 @@ from dbase.orm_query import (
     orm_get_word_obj,
     orm_get_words, get_block_obj, set_block, post_block_user,
     orm_get_count_need_confirmed, orm_get_all_energy_to_month,
+    orm_add_update_power,
 )
 from filters.chat_types import ChatTypeFilter, IsAdmin
 from filters.data_filter import validate_apart, validate_data_meter, validate_porch
-from handlers.const import PORCH_APART
-from handlers.states import ChangeMeter, ChangeWords, PorchMessage, SetApart
+from handlers.const import PORCH_APART, APARTMENTCOUNT
+from handlers.states import ChangeMeter, ChangeWords, PorchMessage, SetApart, \
+    GetPower
 from kbds.kbds import (
     btns,
     btns_admin,
@@ -558,8 +560,7 @@ async def send_info_apart(
 
     await show_meter_info(message, session, state, message.text)
 
-# TODO сделать выгрузку в эксель данных по электричеству.
-# TODO callback-и электричества post_power, get_power_month
+# TODO callback-и электричества post_power
 
 async def generate_excel_in_memory(
     session: AsyncSession,
@@ -680,6 +681,50 @@ async def get_power_month(
     await bot.send_document(
         chat_id=callback.message.chat.id, document=document, caption="Ваш отчёт готов!"
     )
+
+
+@user_private_admin_router.callback_query(F.data == "post_power")
+async def get_data_apart_cmd(
+    callback: types.CallbackQuery, bot: Bot, state: FSMContext
+):
+    await bot.send_message(callback.from_user.id, "Введите номер квартиры")
+    await callback.answer()
+    await state.set_state(GetPower.apartment)
+
+
+
+@user_private_admin_router.message(StateFilter(GetPower))
+async def input_t_power_cmd(
+    message: types.Message,
+    bot: Bot,
+    session: AsyncSession,
+    state: FSMContext,
+):
+    t = message.text.lower()
+    if not t.isdigit():
+        await message.answer("Должно быть число. Введите заново.")
+        return
+    current_state = await state.get_state()
+    if current_state == GetPower.apartment:
+        if 0 < int(t) <= APARTMENTCOUNT:
+            await state.update_data(apartment=int(t))
+            await state.set_state(GetPower.t0)
+            await bot.send_message(message.from_user.id, "Введите показания Т0")
+        else:
+            await bot.send_message(message.from_user.id, f"В доме {APARTMENTCOUNT} квартир. Введите номер существующей квартиры.")
+    elif  current_state == GetPower.t0:
+        await state.update_data(t0=int(t))
+        await state.set_state(GetPower.t1)
+        await bot.send_message(message.from_user.id, "Введите показания Т1")
+    elif  current_state == GetPower.t1:
+        await state.update_data(t1=int(t))
+        await state.set_state(GetPower.t2)
+        await bot.send_message(message.from_user.id, "Введите показания Т2")
+    elif  current_state == GetPower.t2:
+        await state.update_data(t2=int(t))
+        data = await state.get_data()
+        await orm_add_update_power(session, **data)
+        await state.clear()
 
 
 @user_private_admin_router.callback_query(F.data)
